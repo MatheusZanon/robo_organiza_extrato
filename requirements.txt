@@ -1,0 +1,7 @@
+ipykernel
+openpyxl
+pandas
+tabula-py
+JPype1
+pdfquery
+mysql-connector-python
