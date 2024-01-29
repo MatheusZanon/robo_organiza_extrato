@@ -1,7 +1,9 @@
 ipykernel
 openpyxl
+Pillow
+pywin32
 pandas
-tabula-py
 JPype1
 pdfquery
 mysql-connector-python
+selenium
