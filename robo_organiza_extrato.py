@@ -12,14 +12,20 @@ from openpyxl import Workbook
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image
 import win32com.client as win32
+import os
 import time
 import subprocess
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.action_chains import ActionChains
+from selenium.common.exceptions import  NoSuchElementException
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 
 # =====================CONFIGURAÇÂO DO BANCO DE DADOS======================
 db_conf = db_config()
@@ -43,7 +49,6 @@ nome_processo_drive = "GoogleDriveFS.exe"
 
 # Listar processos em execução e verificar se o Google Drive File Stream está entre eles
 processo_ativo = False
-
 try:
     processos = subprocess.check_output(['tasklist']).decode('cp1252').split('\r\n')
 except UnicodeDecodeError:
@@ -64,8 +69,16 @@ if not processo_ativo:
 # ================CONFIGURAÇÃO DO SELENIUM CHROME DRIVER=====================
 # Opções de inicialização
 chrome_options = Options()
+# Para retirar a mensagem do Chrome de que "uma automação está controlando esse navegador" 
 chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
 chrome_options.add_experimental_option('useAutomationExtension', False)
+prefs = {"credentials_enable_service": False, 
+         "profile.password_manager_enabled": False, # Desativar o prompt de salvamento de senha
+         "download.prompt_for_download": False, # Para desativar a caixa de diálogo de download
+         "plugins.always_open_pdf_externally": True # Para desativar a caixa de diálogo de download
+         }
+chrome_options.add_experimental_option("prefs", prefs)
+
 # Caminho para o chrome driver
 caminho_drive = r'documents\\chromedriver-win64\\chromedriver.exe'
 # Configurar o serviço do ChromeDriver
@@ -89,7 +102,7 @@ lista_dir_clientes = [dir_clientes_itaperuna, dir_clientes_manaus]
 dir_extratos = f"{particao}:\\Meu Drive\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{mes}_{ano}"
 
 
-# ==================== MÉTODOS DE CADA ETAPA DO PROCESSO=======================
+# ==================== MÉTODOS DE AUXÍLIO====================================
 def procura_cliente(nome_cliente):
     try:
         # PROCURA CLIENTE AO QUAL O EXTRATO PERTENCE
@@ -145,6 +158,30 @@ def procura_pasta_cliente(nome):
     except Exception as error:
         print(error)
 
+def procura_elemento(driver, xpath, tempo_espera):
+    try:
+        elemento = WebDriverWait(driver, int(tempo_espera)).until(EC.presence_of_element_located((By.XPATH, xpath)))
+        time.sleep(0.1)
+        if elemento.is_displayed() and elemento.is_enabled():
+            return elemento
+    except TimeoutException:
+        print(f"Elemento não encontrado: {xpath}")
+
+def procura_todos_elementos(driver, xpath, tempo_espera):
+    try:
+        elementos = WebDriverWait(driver, int(tempo_espera)).until(EC.presence_of_all_elements_located((By.XPATH, xpath)))
+        time.sleep(0.1)
+        return elementos
+    except TimeoutException:
+        print(f"Elementos não encontrados: {xpath}")
+
+def encontrar_elemento_shadow_root(driver, host, elemento):
+    try:
+        javascript = f'return document.querySelector("{host}").shadowRoot.querySelector("{elemento}")'
+        return driver.execute_script(javascript)
+    except Exception as error:
+        print(error)
+
 def start_chrome():
     try:
         # Iniciar o Chrome com as opções configuradas e o serviço
@@ -155,19 +192,21 @@ def start_chrome():
         driver.get("https://passport.nibo.com.br/account/login?email=&returnUrl=%2fauthorize%3fresponse_type"+
                    "%3dtoken%26client_id%3d103416FE-A280-466A-9D28-642ACEE21C3B%26lu%3d1%26redirect_uri%3dhttps"+
                    "%253a%252f%252fempresa.nibo.com.br%252fUser%252fLogonWithToken%253freturnUrl%253d%252fOrganization")
-        element_email = driver.find_element(By.XPATH, """//*[@id="Username"]""")
-        element_email.send_keys("automacao@exponential-co.com")
-        element_btn_continue = driver.find_element(By.XPATH, """//*[@id="continue-button"]""")
-        element_btn_continue.click()
-        time.sleep(0.5)
-        element_senha = driver.find_element(By.XPATH, """//*[@id="Password"]""")
-        element_senha.send_keys("""NRbTK*Agd#T10{""")
-        element_btn_entrar = driver.find_element(By.XPATH, """//*[@id="password"]/div[3]/input""")
-        element_btn_entrar.click()
+        elemento_email = procura_elemento(driver, """//*[@id="Username"]""", 30)
+        elemento_email.send_keys("automacao@exponential-co.com")
+        elemento_btn_continue = procura_elemento(driver, """//*[@id="continue-button"]""", 30)
+        elemento_btn_continue.click()
+        elemento_senha = procura_elemento(driver, """//*[@id="Password"]""", 30)
+        elemento_senha.send_keys("""NRbTK*Agd#T10{""")
+        elemento_btn_entrar = procura_elemento(driver, """//*[@id="password"]/div[3]/input""", 30) 
+        elemento_btn_entrar.click()
         return actions, driver
     except Exception as error:
         print(f"Chrome Driver retornou um erro: {error}")
+        driver.quit()
+        start_chrome()
 
+# ==================== MÉTODOS DE CADA ETAPA DO PROCESSO=======================
 def organiza_extratos():
     try:
         pasta_faturas = listagem_pastas(dir_extratos)
@@ -209,7 +248,8 @@ def organiza_extratos():
                     match_demitido = re.search(r"No. Empregados: Demitido:\s*(\d+)", texto_pdf)
                     if match_demitido:
                         demitido = match_demitido.group(1)
-                        match_num_empregados = re.search(r"No. Empregados: Demitido:\s+" + demitido + r"\s*(\d+)", texto_pdf)
+                        match_num_empregados = re.search(r"No. Empregados: Demitido:\s+" + demitido + 
+                                                         r"\s*(\d+)", texto_pdf)
                         if match_num_empregados:
                             num_empregados = match_num_empregados.group(1)
                         else: 
@@ -222,7 +262,8 @@ def organiza_extratos():
                     match_transferido = re.search(r"No. Estagiários: Transferido:\s*(\d+)", texto_pdf)
                     if match_transferido:
                         transferido = match_transferido.group(1)
-                        match_num_estagiarios = re.search(r"No. Estagiários: Transferido:\s+" + transferido + r"\s*(\d+)", texto_pdf)
+                        match_num_estagiarios = re.search(r"No. Estagiários: Transferido:\s+" + transferido + 
+                                                          r"\s*(\d+)", texto_pdf)
                         if match_num_estagiarios:
                             num_estagiarios = match_num_estagiarios.group(1)
                         else: 
@@ -247,15 +288,18 @@ def organiza_extratos():
                     # SALARIO CONTRIBUIÇÃO EMPREGADOS
                     match_salario_contri_empregados = re.search(r"Salário contribuição empregados:\s*([\d.,]+)", texto_pdf)
                     if  match_salario_contri_empregados:
-                        salario_contri_empregados = float(match_salario_contri_empregados.group(1).replace(".", "").replace(",", "."))
+                        salario_contri_empregados = float(match_salario_contri_empregados
+                                                          .group(1).replace(".", "").replace(",", "."))
                     else: 
                         salario_contri_empregados = 0
                     print(f"Salário contribuição Empregados: {salario_contri_empregados}")
 
                     # SALARIO CONTRIBUIÇÃO CONTRIBUINTES
-                    match_salario_contri_contribuintes = re.search(r"Salário contribuição contribuintes:\s*([\d.,]+)", texto_pdf)
+                    match_salario_contri_contribuintes = re.search(r"Salário contribuição contribuintes:\s*([\d.,]+)", 
+                                                                   texto_pdf)
                     if  match_salario_contri_contribuintes:
-                        salario_contri_contribuintes = float(match_salario_contri_contribuintes.group(1).replace(".", "").replace(",", "."))
+                        salario_contri_contribuintes = float(match_salario_contri_contribuintes
+                                                             .group(1).replace(".", "").replace(",", "."))
                     else:
                         salario_contri_contribuintes = 0
                     print(f"Salário contribuição Contribuintes: {salario_contri_contribuintes}")
@@ -537,23 +581,26 @@ def gera_fatura():
         return (error)
 
 def gera_boleto(): 
-    try:  
+    try:
+        boleto = False
         actions, driver = start_chrome()
         time.sleep(1)
-        element_cards = driver.find_elements(By.XPATH, """//*[@id="myorganizations-container"]/div/div[3]/ng-include[2]/div[*]/a/h3/span""")
-        for card in element_cards:
+        elemento_cards = procura_todos_elementos(driver, """//*[@id="myorganizations-container"]"""+
+                                                """/div/div[3]/ng-include[2]/div[*]/a/h3/span""", 10)
+        for card in elemento_cards:
             if card.text == "HUMAN SOLUCOES E DESENVOLVIMENTOS EM RECURSOS HUMANOS LTDA":
                 card.click()
                 break
-        element_contatos = driver.find_element(By.XPATH, """//*[@id="page-organization-details"]/div[5]/div/div[1]/div/div/ul[2]/li[3]""")
-        actions.move_to_element(element_contatos).perform()
-        time.sleep(0.5)
-        element_contatos_clientes = driver.find_element(By.XPATH, """//*[@id="page-organization-details"]/div[5]/div/div[1]/div/div/ul[2]/li[3]/ul/li[1]""")
-        element_contatos_clientes.click()
-        element_search = driver.find_element(By.XPATH, """//*[@id="entityList_filter"]/label/input""")
+        time.sleep(1.5)
+        elemento_contatos = procura_elemento(driver, """//*[@id="page-organization-details"]"""+
+                                                """/div[5]/div/div[1]/div/div/ul[2]/li[3]/a""", 10)
+        actions.move_to_element(elemento_contatos).perform()
+        elemento_clientes = procura_elemento(driver, """//*[@id="page-organization-details"]"""+
+                                                """/div[5]/div/div[1]/div/div/ul[2]"""+
+                                                """/li[3]/ul/li[1]/a""", 10)
+        elemento_clientes.click()
     except Exception as web_error:
-        print (web_error.args)
-
+        print (web_error)
     try:
         for diretorio in lista_dir_clientes:
             pastas_regioes = listagem_pastas(diretorio)
@@ -573,17 +620,39 @@ def gera_boleto():
                             boleto = False
                             break
                         elif boleto == False:
-                            print(f"{nome_pasta_cliente} vai precisar de um boleto.")
                             cliente = procura_cliente(nome_pasta_cliente.replace("S S", "S/S"))
                             if cliente:
-                                print(cliente)
                                 cliente_id = cliente[0]
                                 cliente_cnpj = cliente[2]
                                 cliente_cpf = cliente[3]
-        input()
-        driver.quit()
+                                valores = procura_valores(cliente_id)
+                                if valores:
+                                    elemento_lista_clientes = procura_todos_elementos(driver,"""//*[@id="entityList"]"""+
+                                                                                      """/tbody/tr/td[1]""" , 15)
+                                    print(f"{nome_pasta_cliente} vai precisar de um boleto.")
+                                    elemento_search = procura_elemento(driver, """//*[@id="entityList_filter"]"""+
+                                                                      """/label/input""", 10)
+                                    
+                                    if not cliente_cnpj == '' or not cliente_cnpj == None:
+                                        elemento_search.send_keys(cliente_cnpj)
+                                    elif not cliente_cpf == '' or not cliente_cpf == None:
+                                        elemento_search.send_keys(cliente_cpf)
+                                    
+                                    time.sleep(2)
+                                    for cliente_lista in elemento_lista_clientes:
+                                        if cliente_lista.text.__contains__(cliente_cnpj) or cliente_lista.text.__contains__(cliente_cpf):
+                                            print(cliente_lista.text)
+                                            input()
+                                else:
+                                    print(f"Valores de financeiro não encontrados para {nome_pasta_cliente}")
+                            else:
+                                print(f"Cliente {nome_pasta_cliente} não encontrado!")
+                    else:
+                        continue    
     except Exception as error:
-        print (error)
+        print(error)
+    input()
+    driver.quit()
 
 def envia_arquivos():
     try:    
