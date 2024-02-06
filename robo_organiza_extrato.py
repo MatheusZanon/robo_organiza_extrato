@@ -221,7 +221,7 @@ def organiza_extratos():
                     # Exemplo de extração para Texto
                     match_centro_custo = re.search(r"C\.Custo:\s*(.*)", texto_pdf)
                     if match_centro_custo:
-                        nome_centro_custo = match_centro_custo.group(1)
+                        nome_centro_custo = match_centro_custo.group(1).replace("í", "i").replace("ó", "o")
                         print(f"Centro de Custo: {nome_centro_custo}")
                         partes = nome_centro_custo.split(" - ", 1)
                         if len(partes) > 1:
@@ -357,10 +357,10 @@ def organiza_extratos():
                         print(f"Cliente: {cliente}\n Caminho da pasta: {caminho_pasta_cliente}\n Extrato: {extrato}\n")
                         input()
                         valores_extrato = procura_valores(cliente_id)
-                        print(valores_extrato)
+                        print(f"Valores: {valores_extrato}")
                         input()
                         if valores_extrato:
-                            print("Esses valores de extrato ja foram registrados!")
+                            print("Esses valores de extrato ja foram registrados!\n")
                         else:
                             # INSERÇÃO DE DADOS NO BANCO
                             query_insert_valores = """INSERT INTO clientes_financeiro_valores 
@@ -381,17 +381,22 @@ def organiza_extratos():
 
                             # Caminho do arquivo PDF
                             caminho_pdf = Path(extrato)
-                            if not nome_extrato.__contains__(f"Extrato_Mensal_{nome_centro_custo}_{mes}.{ano}"):
-                                novo_nome_extrato = caminho_pdf.with_name(f"Extrato_Mensal_{nome_centro_custo}_{mes}.{ano}")
-                                caminho_pdf.rename(novo_nome_extrato)
+                            if not nome_extrato.__contains__(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{mes}.{ano}"):
+                                novo_nome_extrato = caminho_pdf.with_name(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{mes}.{ano}.pdf")
+                                caminho_pdf_mod = caminho_pdf.rename(novo_nome_extrato)
+                            else:
+                                caminho_pdf_mod = caminho_pdf
+                            print(caminho_pdf)
+                            print(caminho_pdf_mod)
+                            input()
                             # Caminho da pasta de destino (o caminho que vem da sua variável)
                             caminho_destino = Path(caminho_pasta_cliente)
                             # Verifica se a pasta de destino existe; se não, cria a pasta
                             caminho_destino.mkdir(parents=True, exist_ok=True)
                             # Copiar o arquivo PDF para a pasta de destino
-                            shutil.copy(caminho_pdf, caminho_destino / caminho_pdf.name)
+                            shutil.copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
                     else:
-                        print("Cliente não encontrado!")
+                        print("Cliente não encontrado!\n")
 
                     
     except Exception as error:
