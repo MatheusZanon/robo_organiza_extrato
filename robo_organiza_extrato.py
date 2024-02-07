@@ -114,6 +114,10 @@ def procura_cliente(nome_cliente):
             conn.commit()
         if cliente:
             return cliente
+        else:
+            cliente_novo = procura_cliente(str(nome_cliente).replace("S S", "S/S"))
+            if cliente_novo:
+                return cliente_novo
     except Exception as error:
         print(error)
 
@@ -182,6 +186,25 @@ def encontrar_elemento_shadow_root(driver, host, elemento):
     except Exception as error:
         print(error)
 
+def agendar_lancamento(driver):
+    try:
+        elemento_agenda_lancamento = procura_elemento(driver, """/html/body/div[5]/div/div[2]/div[3]"""+
+                                                      """/div/div/div[2]/div[2]/div/h4[1]/a""", 15)
+        if elemento_agenda_lancamento:
+            elemento_agenda_lancamento.click()
+    except Exception as error:
+        print(error)
+
+def baixar_boleto_lancamento(driver):
+    try:
+        elemento_lista_lancamentos = procura_todos_elementos(driver, """/html/body/div[5]/div/div[2]/div[3]"""+
+                                                             """/div/div/div[2]/div[2]/div/div[3]/div/div/div[2]"""+
+                                                             """/table/tbody/tr/td[2]/a""", 30)
+        for elemento in elemento_lista_lancamentos:
+            print(elemento)
+    except Exception as error:
+        print(error)
+
 def start_chrome():
     try:
         # Iniciar o Chrome com as opções configuradas e o serviço
@@ -225,7 +248,7 @@ def organiza_extratos():
                         print(f"Centro de Custo: {nome_centro_custo}")
                         partes = nome_centro_custo.split(" - ", 1)
                         if len(partes) > 1:
-                            nome_centro_custo_mod = partes[1]
+                            nome_centro_custo_mod = partes[1].strip()
                     
                     # CONVÊNIO FÁRMACIA
                     match_convenio_farm = re.search(r"244CONVÊNIO FARMÁCIA\s*([\d.,]+)", texto_pdf)
@@ -408,7 +431,6 @@ def organiza_extratos():
 def gera_fatura():
     try:
         modelo_fatura = Path(f"{particao}:\\Meu Drive\\Arquivos_Automacao\\Fatura_Detalhada_Modelo_00.0000_python.xlsx")
-        caminho_final = ""
         fatura_pronta = False
 
         for diretorio in lista_dir_clientes:
@@ -420,7 +442,9 @@ def gera_fatura():
                     if sub_pasta.__contains__(f"{mes}-{ano}"):
                         arquivos_cliente = listagem_arquivos(sub_pasta)
                         for arquivo in arquivos_cliente:
-                            if arquivo.__contains__("Fatura_Detalhada_") and arquivo.__contains__(nome_pasta_cliente):
+                            if (arquivo.__contains__("Fatura_Detalhada_") 
+                            and arquivo.__contains__(nome_pasta_cliente)
+                            and arquivo.__contains__(".pdf")):
                                 fatura_pronta = True
                                 break
                             else:
@@ -454,13 +478,13 @@ def gera_fatura():
                                         # nome da planilha (em baixo)
                                         sheet.title = f"{mes}.{ano}"
                                         # titulo da fatura
-                                        sheet['E2'] = f"Fatura Detalhada - {nome_pasta_cliente}"
+                                        sheet['D2'] = f"Fatura Detalhada - {nome_pasta_cliente}"
                                         # numero de funcionarios
                                         if valores_financeiro[4] == 1:
                                             sheet['J6'] = 1
                                             sheet['K6'] = 'funcionário'
                                         else:
-                                            sheet['J6'] = valores_financeiro[4]
+                                            sheet['J6'] = valores_financeiro[4] + valores_financeiro[5]
                                         # salários a pagar
                                         sheet['A7'] = f"Salários a pagar {mes}.{ano}"
                                         sheet['J7'] = valores_financeiro[13]
@@ -579,9 +603,7 @@ def gera_fatura():
                                     print("Cliente não possue valores para gerar fatura!")
                             else:
                                 print("Cliente não encontrado!")
-                    else:
-                        continue
-
+        input()
     except Exception as error:
         return (error)
 
@@ -627,33 +649,43 @@ def gera_boleto():
                         elif boleto == False:
                             cliente = procura_cliente(nome_pasta_cliente.replace("S S", "S/S"))
                             if cliente:
+                                print(cliente)
+                                input()
                                 cliente_id = cliente[0]
                                 cliente_cnpj = cliente[2]
                                 cliente_cpf = cliente[3]
                                 valores = procura_valores(cliente_id)
                                 if valores:
-                                    elemento_lista_clientes = procura_todos_elementos(driver,"""//*[@id="entityList"]"""+
-                                                                                      """/tbody/tr/td[1]""" , 15)
                                     print(f"{nome_pasta_cliente} vai precisar de um boleto.")
                                     elemento_search = procura_elemento(driver, """//*[@id="entityList_filter"]"""+
-                                                                      """/label/input""", 10)
-                                    
+                                                                      """/label/input""", 10)                              
                                     if not cliente_cnpj == '' or not cliente_cnpj == None:
                                         elemento_search.send_keys(cliente_cnpj)
                                     elif not cliente_cpf == '' or not cliente_cpf == None:
-                                        elemento_search.send_keys(cliente_cpf)
-                                    
+                                        elemento_search.send_keys(cliente_cpf)                       
                                     time.sleep(2)
+                                    try:
+                                        elemento_lista_clientes = procura_todos_elementos(driver,"""//*[@id="entityList"]"""+
+                                                                    """/tbody/tr/td[1]/a""" , 15)
+                                    except NoSuchElementException:
+                                        elemento_lista_clientes = procura_todos_elementos(driver,"""//*[@id="entityList"]"""+
+                                                                    """/tbody/tr[*]/td[1]/a""" , 15)
                                     for cliente_lista in elemento_lista_clientes:
                                         if cliente_lista.text.__contains__(cliente_cnpj) or cliente_lista.text.__contains__(cliente_cpf):
-                                            print(cliente_lista.text)
-                                            input()
+                                            cliente_lista.click()
+                                            try:
+                                                elemento_sem_lancamento = procura_elemento(driver, """/html/body/div[5]/div/div[2]/div[3]"""+
+                                                                                        """/div/div/div[2]/div[2]/div/div[3]/div/div/p""", 10)
+                                                if elemento_sem_lancamento:
+                                                    agendar_lancamento(driver)
+                                                    input()  
+                                            except NoSuchElementException:
+                                                baixar_boleto_lancamento(driver)
+                                                input()
                                 else:
                                     print(f"Valores de financeiro não encontrados para {nome_pasta_cliente}")
                             else:
-                                print(f"Cliente {nome_pasta_cliente} não encontrado!")
-                    else:
-                        continue    
+                                print(f"Cliente {nome_pasta_cliente} não encontrado!") 
     except Exception as error:
         print(error)
     input()
