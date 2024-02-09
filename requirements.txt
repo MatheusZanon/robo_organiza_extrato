@@ -8,3 +8,4 @@ JPype1
 pdfquery
 mysql-connector-python
 selenium
+python-dotenv

@@ -1,89 +1,42 @@
+# =========================IMPORTAÇÕES DE BIBLIOTECAS E COMPONENTES========================
 from components.importacao_diretorios_windows import listagem_pastas, listagem_arquivos, pega_nome
 from components.extract_text_pdf import extract_text_pdf
-from components.db_config import db_config
 from components.importacao_caixa_dialogo import DialogBox
+from components.checar_ativacao_google_drive import checa_google_drive
+from components.configuracao_db import configura_db
+from components.configuracao_selenium_drive import configura_selenium_driver
 import tkinter as tk
 import mysql.connector
-from mysql.connector import errorcode
 import re
 from pathlib import Path
 import shutil 
-from openpyxl import Workbook
 from openpyxl import load_workbook
-from openpyxl.drawing.image import Image
 import win32com.client as win32
+from dotenv import load_dotenv
 import os
 import time
-import subprocess
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import  NoSuchElementException
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+# ================= CARREGANDO VARIÁVEIS DE AMBIENTE======================
+load_dotenv()
 
 # =====================CONFIGURAÇÂO DO BANCO DE DADOS======================
-db_conf = db_config()
-try: 
-    conn = mysql.connector.connect(**db_conf)
-    cursor = conn.cursor()
-    print(" * Conexão bem sucedida!")
-
-except mysql.connector.Error as err:
-    if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-        print("Tem algo de erro com seu nome ou senha.")
-    elif err.errno == errorcode.ER_BAD_DB_ERROR:
-        print("Esse banco não existe!")
-    else:
-        print(err) 
-
+db_conf, conn, cursor = configura_db()
 
 # =============CHECANDO SE O GOOGLE FILE STREAM ESTÁ INICIADO NO SISTEMA==============
-# Nome do processo do Google Drive File Stream
-nome_processo_drive = "GoogleDriveFS.exe"
-
-# Listar processos em execução e verificar se o Google Drive File Stream está entre eles
-processo_ativo = False
-try:
-    processos = subprocess.check_output(['tasklist']).decode('cp1252').split('\r\n')
-except UnicodeDecodeError:
-    processos = subprocess.check_output(['tasklist']).decode('utf-16').split('\r\n')
-
-for proc in processos:
-    if nome_processo_drive in proc:
-        processo_ativo = True
-        break
-
-# Se o Google Drive File Stream não estiver em execução, iniciá-lo
-if not processo_ativo:
-    caminho_executavel_drive = r"C:\Program Files\Google\Drive File Stream\launch.bat"
-    subprocess.Popen(caminho_executavel_drive, shell=True)
-    time.sleep(3)
-
+checa_google_drive()
 
 # ================CONFIGURAÇÃO DO SELENIUM CHROME DRIVER=====================
-# Opções de inicialização
-chrome_options = Options()
-# Para retirar a mensagem do Chrome de que "uma automação está controlando esse navegador" 
-chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-chrome_options.add_experimental_option('useAutomationExtension', False)
-prefs = {"credentials_enable_service": False, 
-         "profile.password_manager_enabled": False, # Desativar o prompt de salvamento de senha
-         "download.prompt_for_download": False, # Para desativar a caixa de diálogo de download
-         "plugins.always_open_pdf_externally": True # Para desativar a caixa de diálogo de download
-         }
-chrome_options.add_experimental_option("prefs", prefs)
-
-# Caminho para o chrome driver
-caminho_drive = r'documents\\chromedriver-win64\\chromedriver.exe'
-# Configurar o serviço do ChromeDriver
-servico = Service(caminho_drive)
-
+chrome_options, servico = configura_selenium_driver()
+# Configurando Conta de Automação do Nibo
+automacao_email = os.getenv('SELENIUM_USER')
+automacao_senha = os.getenv('SELENIUM_PASSWORD')
 
 # ==================CAIXA DE DIALOGO INICIAL============================
 def main():
@@ -94,6 +47,7 @@ def main():
 
 if __name__ == "__main__":
     particao, rotina, mes, ano = main()
+
 
 # ========================PARAMETROS INICIAS==============================
 dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
@@ -164,46 +118,155 @@ def procura_pasta_cliente(nome):
 
 def procura_elemento(driver, xpath, tempo_espera):
     try:
-        elemento = WebDriverWait(driver, int(tempo_espera)).until(EC.presence_of_element_located((By.XPATH, xpath)))
+        WebDriverWait(driver, float(tempo_espera)).until(EC.presence_of_element_located((By.XPATH, xpath)))
         time.sleep(0.1)
+        elemento = WebDriverWait(driver, float(tempo_espera)).until(EC.visibility_of_element_located((By.XPATH, xpath)))
         if elemento.is_displayed() and elemento.is_enabled():
             return elemento
     except TimeoutException:
-        print(f"Elemento não encontrado: {xpath}")
+        return None
 
 def procura_todos_elementos(driver, xpath, tempo_espera):
     try:
-        elementos = WebDriverWait(driver, int(tempo_espera)).until(EC.presence_of_all_elements_located((By.XPATH, xpath)))
+        WebDriverWait(driver, float(tempo_espera)).until(EC.presence_of_all_elements_located((By.XPATH, xpath)))
         time.sleep(0.1)
+        elementos = WebDriverWait(driver, float(tempo_espera)).until(EC.visibility_of_all_elements_located((By.XPATH, xpath)))
         return elementos
     except TimeoutException:
-        print(f"Elementos não encontrados: {xpath}")
+        return None
 
-def encontrar_elemento_shadow_root(driver, host, elemento):
-    try:
-        javascript = f'return document.querySelector("{host}").shadowRoot.querySelector("{elemento}")'
-        return driver.execute_script(javascript)
-    except Exception as error:
-        print(error)
+def encontrar_elemento_shadow_root(driver, host, elemento, timeout):
+    """Espera por um elemento dentro de um shadow-root até que o elemento esteja presente ou o tempo limite seja atingido."""
+    end_time = time.time() + float(timeout)
+    while True:
+        try:
+            # Tenta encontrar o elemento usando JavaScript
+            js_script = f"""
+            return document.querySelector('{host}').shadowRoot.querySelector('{elemento}');
+            """
+            element = driver.execute_script(js_script)
+            if element:
+                return element
+        except Exception as e:
+            pass  # Ignora erros e tenta novamente até que o tempo limite seja atingido
+        time.sleep(0.1)  # Espera 1 segundo antes de tentar novamente
+        if time.time() > end_time:
+            break  # Sai do loop se o tempo limite for atingido
+    return None
 
-def agendar_lancamento(driver):
+def agendar_lancamento(driver, valor_fatura):
     try:
-        elemento_agenda_lancamento = procura_elemento(driver, """/html/body/div[5]/div/div[2]/div[3]"""+
-                                                      """/div/div/div[2]/div[2]/div/h4[1]/a""", 15)
+        elemento_agenda_lancamento = procura_elemento(driver, """//*[@id="EntityDetailsContainer"]/h4[1]/a""", 15)
         if elemento_agenda_lancamento:
             elemento_agenda_lancamento.click()
+            if int(mes) == 12:
+                mes_agenda = "01"
+                ano_agenda = str(int(ano) + 1)
+            else:
+                if int(mes) > 0 and int(mes) < 10: 
+                    mes_agenda = "0" + str(int(mes) + 1)
+                elif int(mes) > 9:
+                    mes_agenda = str(int(mes) + 1)
+                ano_agenda = ano
+            texto_data_lancamento = f"02/{mes_agenda}/{ano_agenda}"
+
+            # Vencimento
+            elemento_vencimento = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create >"""+
+                                                                 """ div > div.modal-body > form > div:nth-child(2) > div:nth-child(2) > form-helper:nth-child(1)"""+
+                                                                 """ > div:nth-child(1) > div > calendar > div > div > div > input""", 2)
+            driver.execute_script(f"""arguments[0].value='{texto_data_lancamento}'""", elemento_vencimento)
+            time.sleep(0.1)
+
+            # Previsão
+            elemento_previsao = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create > """+
+                                                               """div > div.modal-body > form > div:nth-child(2) > div:nth-child(2) > form-helper:nth-child(2)"""+
+                                                               """ > div:nth-child(1) > div > calendar > div > div > div > input""", 2)
+            driver.execute_script(f"""arguments[0].value='{texto_data_lancamento}'""", elemento_previsao)
+            time.sleep(0.1)
+
+            # Descrição
+            elemento_descricao = encontrar_elemento_shadow_root(driver, "#app", "#description", 2)
+            driver.execute_script("""arguments[0].value='Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, """+
+                                  f"""vale transporte e taxa de administração de pessoas {mes}/{ano}'""", elemento_descricao)
+            time.sleep(0.1)
+
+            # Categoria
+            elemento_categoria = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create """+
+                                                                """> div > div.modal-body > form > div:nth-child(2) > div.row.mt-3 > app-schedule-category > """+
+                                                                """fieldset > div.ng-untouched.ng-valid.ng-dirty > div > app-schedule-category-item > div > """+
+                                                                """form-helper.col-4 > div:nth-child(1) > div > app-category-select > ng-select > div > div > """+
+                                                                """div.ng-input > input[type=text]""", 2)
+            driver.execute_script(f"""arguments[0].value='Gestão de Mão de Obra Terceirizada'""", elemento_categoria)
+            time.sleep(0.1)
+
+            # Valor
+            elemento_valor = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create """+
+                                                            """> div > div.modal-body > form > div:nth-child(2) > div.row.mt-3 > app-schedule-category """+
+                                                            """> fieldset > div.ng-untouched.ng-valid.ng-dirty > div > app-schedule-category-item > div > """+
+                                                            """div > form-helper > div:nth-child(1) > div > input""", 2)
+            driver.execute_script(f"""arguments[0].value='{valor_fatura}'""", elemento_valor)
+            time.sleep(0.1)
+
+            # Automatizar Cobrança
+            elemento_botao_automatizar = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create """+
+                                                                        """> div > div.modal-body > form > div:nth-child(2) > div:nth-child(7) > panel-toggle >"""+
+                                                                        """ div > div > ui-switch > button""", 2)
+            driver.execute_script(f"""arguments[0].click();""", elemento_botao_automatizar)
+            time.sleep(0.1)
+
+            # Botao Enviar Imediatamente
+            elemento_envio_imediato = encontrar_elemento_shadow_root(driver, "#app", """#entryToday""", 2)
+            driver.execute_script(f"""arguments[0].click();""", elemento_envio_imediato)
+            time.sleep(0.1)
+
+            # TODO CLICAR NO BOTAO DE AGENDAR LA BOLETA
+
+            # Botão Fechar
+            elemento_fechar = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create > div > """+
+                                                             """modal-header > div > button""", 10)
+            driver.execute_script("""return arguments[0].click();""", elemento_fechar)
+            time.sleep(0.2)
     except Exception as error:
         print(error)
 
-def baixar_boleto_lancamento(driver):
+def baixar_boleto_lancamento(driver, elemento_search):
     try:
-        elemento_lista_lancamentos = procura_todos_elementos(driver, """/html/body/div[5]/div/div[2]/div[3]"""+
-                                                             """/div/div/div[2]/div[2]/div/div[3]/div/div/div[2]"""+
-                                                             """/table/tbody/tr/td[2]/a""", 30)
-        for elemento in elemento_lista_lancamentos:
-            print(elemento)
+        elemento_lista_lancamentos = procura_todos_elementos(driver, """//*[@id="openScheduleList"]/tbody/tr[*]/td[2]/a""", 8)
+    except TypeError:
+        pass
+    try:
+        if elemento_lista_lancamentos is not None:
+            for elemento in elemento_lista_lancamentos:
+                if ("Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, "+
+                    f"vale transporte e taxa de administração de pessoas {mes}/{ano}") in elemento.text:
+                    elemento.click()
+                    time.sleep(0.5)
+                    indice = 1
+                    achouElemento = False
+                    while achouElemento == False:
+                        elemento_cobrar_boleto = encontrar_elemento_shadow_root(driver, "#app", f"#ngb-nav-{str(indice)}", 1)
+                        if elemento_cobrar_boleto and "Cobrar via boleto" in elemento_cobrar_boleto.text:
+                            achouElemento = True
+                            driver.execute_script("""return arguments[0].click();""", elemento_cobrar_boleto)
+                            time.sleep(0.2)
+                            elemento_download = encontrar_elemento_shadow_root(driver, "#app", f"""#ngb-nav-{str(indice)}-panel > settings > div > app-schedule-entry-promise > """+
+                                                                            """div > app-entry-promise-details-emitted > div > section > table > tbody > tr > """+
+                                                                            """td:nth-child(6) > div > a""", 10)
+                            time.sleep(0.2)
+                            driver.execute_script("""return arguments[0].click();""", elemento_download)
+                        else:
+                            indice += 1
+                    elemento_fechar = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-details """+
+                                                                    """> div > modal-header > div > button""", 10)
+                    driver.execute_script("""return arguments[0].click();""", elemento_fechar)
+                    time.sleep(0.2)
+                    elemento_search.clear()
+                    break
+        else:
+            elemento_search.clear()
+            print("Nenhum lançamento encontrado!")
     except Exception as error:
-        print(error)
+        print(f"Deu algum erro ao tentar baixar o boleto: {error}")
 
 def start_chrome():
     try:
@@ -216,11 +279,11 @@ def start_chrome():
                    "%3dtoken%26client_id%3d103416FE-A280-466A-9D28-642ACEE21C3B%26lu%3d1%26redirect_uri%3dhttps"+
                    "%253a%252f%252fempresa.nibo.com.br%252fUser%252fLogonWithToken%253freturnUrl%253d%252fOrganization")
         elemento_email = procura_elemento(driver, """//*[@id="Username"]""", 30)
-        elemento_email.send_keys("automacao@exponential-co.com")
+        elemento_email.send_keys(automacao_email)
         elemento_btn_continue = procura_elemento(driver, """//*[@id="continue-button"]""", 30)
         elemento_btn_continue.click()
         elemento_senha = procura_elemento(driver, """//*[@id="Password"]""", 30)
-        elemento_senha.send_keys("""NRbTK*Agd#T10{""")
+        elemento_senha.send_keys(automacao_senha)
         elemento_btn_entrar = procura_elemento(driver, """//*[@id="password"]/div[3]/input""", 30) 
         elemento_btn_entrar.click()
         return actions, driver
@@ -245,146 +308,144 @@ def organiza_extratos():
                     match_centro_custo = re.search(r"C\.Custo:\s*(.*)", texto_pdf)
                     if match_centro_custo:
                         nome_centro_custo = match_centro_custo.group(1).replace("í", "i").replace("ó", "o")
-                        print(f"Centro de Custo: {nome_centro_custo}")
+                        #print(f"Centro de Custo: {nome_centro_custo}")
                         partes = nome_centro_custo.split(" - ", 1)
                         if len(partes) > 1:
                             nome_centro_custo_mod = partes[1].strip()
                     
-                    # CONVÊNIO FÁRMACIA
-                    match_convenio_farm = re.search(r"244CONVÊNIO FARMÁCIA\s*([\d.,]+)", texto_pdf)
-                    if match_convenio_farm:
-                        convenio_farmacia = float(match_convenio_farm.group(1).replace(".", "").replace(",", "."))
-                    else:
-                        convenio_farmacia = 0
-                    print(f"Convênio Farmácia: {convenio_farmacia}")
-
-                    # DESCONTO ADIANTAMENTO SALARIAL
-                    match_adiant_salarial = re.search(r"981DESCONTO ADIANTAMENTO SALARIAL\s*([\d.,]+)", texto_pdf)
-                    if match_adiant_salarial:
-                        adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
-                    else: 
-                        adiant_salarial = 0
-                    print(f"Desconto Adiantamento Salarial: {adiant_salarial}")
-
-                    # NUMERO DE EMPREGADOS
-                    # Exemplo de extração para Números
-                    match_demitido = re.search(r"No. Empregados: Demitido:\s*(\d+)", texto_pdf)
-                    if match_demitido:
-                        demitido = match_demitido.group(1)
-                        match_num_empregados = re.search(r"No. Empregados: Demitido:\s+" + demitido + 
-                                                         r"\s*(\d+)", texto_pdf)
-                        if match_num_empregados:
-                            num_empregados = match_num_empregados.group(1)
-                        else: 
-                            num_empregados = 0 
-                    else:
-                        num_empregados = 0
-                    print(f"Número de empregados: {num_empregados}")
-
-                    # NUMERO DE ESTAGIARIOS
-                    match_transferido = re.search(r"No. Estagiários: Transferido:\s*(\d+)", texto_pdf)
-                    if match_transferido:
-                        transferido = match_transferido.group(1)
-                        match_num_estagiarios = re.search(r"No. Estagiários: Transferido:\s+" + transferido + 
-                                                          r"\s*(\d+)", texto_pdf)
-                        if match_num_estagiarios:
-                            num_estagiarios = match_num_estagiarios.group(1)
-                        else: 
-                            num_estagiarios = 0
-                    else:
-                        num_estagiarios = 0
-                    print(f"Número de estagiários: {num_estagiarios}")
-
-                    # TRABALHANDO
-                    match_ferias = re.search(r"Trabalhando: Férias:\s*(\d+)", texto_pdf)
-                    if match_ferias:
-                        ferias = match_ferias.group(1)
-                        match_trabalhando = re.search(r"Trabalhando: Férias:\s+" + ferias + r"\s*(\d+)", texto_pdf)
-                        if match_trabalhando:
-                            trabalhando = match_trabalhando.group(1)
-                        else:
-                            trabalhando = 0
-                    else:
-                        trabalhando = 0
-                    print(f"Trabalhando: {trabalhando}")
-
-                    # SALARIO CONTRIBUIÇÃO EMPREGADOS
-                    match_salario_contri_empregados = re.search(r"Salário contribuição empregados:\s*([\d.,]+)", texto_pdf)
-                    if  match_salario_contri_empregados:
-                        salario_contri_empregados = float(match_salario_contri_empregados
-                                                          .group(1).replace(".", "").replace(",", "."))
-                    else: 
-                        salario_contri_empregados = 0
-                    print(f"Salário contribuição Empregados: {salario_contri_empregados}")
-
-                    # SALARIO CONTRIBUIÇÃO CONTRIBUINTES
-                    match_salario_contri_contribuintes = re.search(r"Salário contribuição contribuintes:\s*([\d.,]+)", 
-                                                                   texto_pdf)
-                    if  match_salario_contri_contribuintes:
-                        salario_contri_contribuintes = float(match_salario_contri_contribuintes
-                                                             .group(1).replace(".", "").replace(",", "."))
-                    else:
-                        salario_contri_contribuintes = 0
-                    print(f"Salário contribuição Contribuintes: {salario_contri_contribuintes}")
-                    
-                    # SOMA DOS SALARIOS
-                    soma_salarios_provdt = salario_contri_empregados + salario_contri_contribuintes
-                    print(f"Soma dos salários: {soma_salarios_provdt}")
-
-                    # VALOR DO INSS
-                    # A expressão regular procura por um ou mais números seguidos por qualquer coisa (não capturada)
-                    # e então "Total INSS:"
-                    match_inss = re.search(r"Total INSS:\s*([\d.,]+)", texto_pdf)
-                    if match_inss:
-                        inss = float(match_inss.group(1).replace(".", "").replace(",", "."))
-                    else:
-                        inss = 0
-                    print(f"Total INSS: {inss}")
-
-                    # VALOR DO FGTS
-                    match_fgts = re.search(r"Valor do FGTS:\s*([\d.,]+)", texto_pdf)
-                    if  match_fgts:
-                        fgts = float(match_fgts.group(1).replace(".", "").replace(",", "."))
-                    else:
-                        fgts = 0
-                    print(f"Valor do FGTS: {fgts}")
-
-                    # VALOR DO IRRF
-                    match_base_iss = re.search(r"([\d.,]+)\s+Valor Total do IRRF: Base ISS:", texto_pdf)
-                    if match_base_iss:
-                        base_iss = match_base_iss.group(1)
-                        match_irrf = re.search(r"([\d.,]+)\s+" + base_iss + r"\s+Valor Total do IRRF: Base ISS:", texto_pdf)
-                        if match_irrf:
-                            irrf = float(match_irrf.group(1).replace(".", "").replace(",", "."))
-                        else:
-                            irrf = 0
-                    else:
-                        irrf = 0
-                    print(f"Valor Total do IRRF: {irrf}")
-
-                    # LÍQUIDO CENTRO DE CUSTO
-                    match_liquido = re.search(r"Líquido Centro de Custo:\s*([\d.,]+)", texto_pdf)
-                    if  match_liquido:
-                        liquido_centro_custo = float(match_liquido.group(1).replace(".", "").replace(",", "."))
-                    else:
-                        liquido_centro_custo = 0
-                    print(f"Líquido Centro de Custo: {liquido_centro_custo}")
-                    # LIQUIDO CENTRO DE CUSTO ENTRA NA COLUNA SALARIOS_PAGAR DO BANCO
-                    
-
                     # PROCURA CLIENTE AO QUAL O EXTRATO PERTENCE
+                    print(nome_centro_custo_mod)
                     cliente = procura_cliente(nome_centro_custo_mod)
                     if cliente:
                         cliente_id = cliente[0]
                         caminho_pasta_cliente = procura_pasta_cliente(nome_centro_custo_mod)
-                        print(f"Cliente: {cliente}\n Caminho da pasta: {caminho_pasta_cliente}\n Extrato: {extrato}\n")
-                        input()
                         valores_extrato = procura_valores(cliente_id)
-                        print(f"Valores: {valores_extrato}")
-                        input()
                         if valores_extrato:
                             print("Esses valores de extrato ja foram registrados!\n")
+                            print(f"Cliente: {cliente}\n Caminho da pasta: {caminho_pasta_cliente}\n Extrato: {extrato}\n")
                         else:
+                            # CONVÊNIO FÁRMACIA
+                            match_convenio_farm = re.search(r"244CONVÊNIO FARMÁCIA\s*([\d.,]+)", texto_pdf)
+                            if match_convenio_farm:
+                                convenio_farmacia = float(match_convenio_farm.group(1).replace(".", "").replace(",", "."))
+                            else:
+                                convenio_farmacia = 0
+                            #print(f"Convênio Farmácia: {convenio_farmacia}")
+
+                            # DESCONTO ADIANTAMENTO SALARIAL
+                            match_adiant_salarial = re.search(r"981DESCONTO ADIANTAMENTO SALARIAL\s*([\d.,]+)", texto_pdf)
+                            if match_adiant_salarial:
+                                adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
+                            else: 
+                                adiant_salarial = 0
+                            #print(f"Desconto Adiantamento Salarial: {adiant_salarial}")
+
+                            # NUMERO DE EMPREGADOS
+                            # Exemplo de extração para Números
+                            match_demitido = re.search(r"No. Empregados: Demitido:\s*(\d+)", texto_pdf)
+                            if match_demitido:
+                                demitido = match_demitido.group(1)
+                                match_num_empregados = re.search(r"No. Empregados: Demitido:\s+" + demitido + 
+                                                                r"\s*(\d+)", texto_pdf)
+                                if match_num_empregados:
+                                    num_empregados = match_num_empregados.group(1)
+                                else: 
+                                    num_empregados = 0 
+                            else:
+                                num_empregados = 0
+                            #print(f"Número de empregados: {num_empregados}")
+
+                            # NUMERO DE ESTAGIARIOS
+                            match_transferido = re.search(r"No. Estagiários: Transferido:\s*(\d+)", texto_pdf)
+                            if match_transferido:
+                                transferido = match_transferido.group(1)
+                                match_num_estagiarios = re.search(r"No. Estagiários: Transferido:\s+" + transferido + 
+                                                                r"\s*(\d+)", texto_pdf)
+                                if match_num_estagiarios:
+                                    num_estagiarios = match_num_estagiarios.group(1)
+                                else: 
+                                    num_estagiarios = 0
+                            else:
+                                num_estagiarios = 0
+                            #print(f"Número de estagiários: {num_estagiarios}")
+
+                            # TRABALHANDO
+                            match_ferias = re.search(r"Trabalhando: Férias:\s*(\d+)", texto_pdf)
+                            if match_ferias:
+                                ferias = match_ferias.group(1)
+                                match_trabalhando = re.search(r"Trabalhando: Férias:\s+" + ferias + r"\s*(\d+)", texto_pdf)
+                                if match_trabalhando:
+                                    trabalhando = match_trabalhando.group(1)
+                                else:
+                                    trabalhando = 0
+                            else:
+                                trabalhando = 0
+                            #print(f"Trabalhando: {trabalhando}")
+
+                            # SALARIO CONTRIBUIÇÃO EMPREGADOS
+                            match_salario_contri_empregados = re.search(r"Salário contribuição empregados:\s*([\d.,]+)", texto_pdf)
+                            if  match_salario_contri_empregados:
+                                salario_contri_empregados = float(match_salario_contri_empregados
+                                                                .group(1).replace(".", "").replace(",", "."))
+                            else: 
+                                salario_contri_empregados = 0
+                            #print(f"Salário contribuição Empregados: {salario_contri_empregados}")
+
+                            # SALARIO CONTRIBUIÇÃO CONTRIBUINTES
+                            match_salario_contri_contribuintes = re.search(r"Salário contribuição contribuintes:\s*([\d.,]+)", 
+                                                                        texto_pdf)
+                            if  match_salario_contri_contribuintes:
+                                salario_contri_contribuintes = float(match_salario_contri_contribuintes
+                                                                    .group(1).replace(".", "").replace(",", "."))
+                            else:
+                                salario_contri_contribuintes = 0
+                            #print(f"Salário contribuição Contribuintes: {salario_contri_contribuintes}")
+                            
+                            # SOMA DOS SALARIOS
+                            soma_salarios_provdt = salario_contri_empregados + salario_contri_contribuintes
+                            #print(f"Soma dos salários: {soma_salarios_provdt}")
+
+                            # VALOR DO INSS
+                            # A expressão regular procura por um ou mais números seguidos por qualquer coisa (não capturada)
+                            # e então "Total INSS:"
+                            match_inss = re.search(r"Total INSS:\s*([\d.,]+)", texto_pdf)
+                            if match_inss:
+                                inss = float(match_inss.group(1).replace(".", "").replace(",", "."))
+                            else:
+                                inss = 0
+                            #print(f"Total INSS: {inss}")
+
+                            # VALOR DO FGTS
+                            match_fgts = re.search(r"Valor do FGTS:\s*([\d.,]+)", texto_pdf)
+                            if  match_fgts:
+                                fgts = float(match_fgts.group(1).replace(".", "").replace(",", "."))
+                            else:
+                                fgts = 0
+                            #print(f"Valor do FGTS: {fgts}")
+
+                            # VALOR DO IRRF
+                            match_base_iss = re.search(r"([\d.,]+)\s+Valor Total do IRRF: Base ISS:", texto_pdf)
+                            if match_base_iss:
+                                base_iss = match_base_iss.group(1)
+                                match_irrf = re.search(r"([\d.,]+)\s+" + base_iss + r"\s+Valor Total do IRRF: Base ISS:", texto_pdf)
+                                if match_irrf:
+                                    irrf = float(match_irrf.group(1).replace(".", "").replace(",", "."))
+                                else:
+                                    irrf = 0
+                            else:
+                                irrf = 0
+                            #print(f"Valor Total do IRRF: {irrf}")
+
+                            # LÍQUIDO CENTRO DE CUSTO
+                            match_liquido = re.search(r"Líquido Centro de Custo:\s*([\d.,]+)", texto_pdf)
+                            if  match_liquido:
+                                liquido_centro_custo = float(match_liquido.group(1).replace(".", "").replace(",", "."))
+                            else:
+                                liquido_centro_custo = 0
+                            #print(f"Líquido Centro de Custo: {liquido_centro_custo}")
+                            # LIQUIDO CENTRO DE CUSTO ENTRA NA COLUNA SALARIOS_PAGAR DO BANCO
+
+
                             # INSERÇÃO DE DADOS NO BANCO
                             query_insert_valores = """INSERT INTO clientes_financeiro_valores 
                                                     (cliente_id, convenio_farmacia, adiant_salarial, numero_empregados, 
@@ -392,12 +453,12 @@ def organiza_extratos():
                                                     salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, irrf, 
                                                     salarios_pagar, mes, ano)
                                                     VALUES (%s, %s,  %s,  %s,  %s,  %s,  %s,  %s,  %s,  %s,  %s,  %s, %s, %s, %s)
-                                                   """
+                                                    """
                             values_insert_valores = (cliente_id, convenio_farmacia, adiant_salarial, num_empregados, 
-                                                     num_estagiarios, trabalhando, salario_contri_empregados, 
-                                                     salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, 
-                                                     irrf, liquido_centro_custo, mes, ano
-                                                     )
+                                                        num_estagiarios, trabalhando, salario_contri_empregados, 
+                                                        salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, 
+                                                        irrf, liquido_centro_custo, mes, ano
+                                                        )
                             with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
                                 cursor.execute(query_insert_valores, values_insert_valores)
                                 conn.commit()
@@ -409,9 +470,6 @@ def organiza_extratos():
                                 caminho_pdf_mod = caminho_pdf.rename(novo_nome_extrato)
                             else:
                                 caminho_pdf_mod = caminho_pdf
-                            print(caminho_pdf)
-                            print(caminho_pdf_mod)
-                            input()
                             # Caminho da pasta de destino (o caminho que vem da sua variável)
                             caminho_destino = Path(caminho_pasta_cliente)
                             # Verifica se a pasta de destino existe; se não, cria a pasta
@@ -457,10 +515,7 @@ def gera_fatura():
                             cliente = procura_cliente(nome_pasta_cliente)
                             if cliente:
                                 cliente_id = cliente[0]
-                                print(f"Cliente: {cliente}")
                                 valores_financeiro = procura_valores(cliente_id)
-                                print(f"Valores: {valores_financeiro}")
-                                input()
                                 if valores_financeiro:
                                     caminho_sub_pasta = Path(sub_pasta)
 
@@ -603,7 +658,6 @@ def gera_fatura():
                                     print("Cliente não possue valores para gerar fatura!")
                             else:
                                 print("Cliente não encontrado!")
-        input()
     except Exception as error:
         return (error)
 
@@ -621,11 +675,13 @@ def gera_boleto():
         time.sleep(1.5)
         elemento_contatos = procura_elemento(driver, """//*[@id="page-organization-details"]"""+
                                                 """/div[5]/div/div[1]/div/div/ul[2]/li[3]/a""", 10)
-        actions.move_to_element(elemento_contatos).perform()
-        elemento_clientes = procura_elemento(driver, """//*[@id="page-organization-details"]"""+
-                                                """/div[5]/div/div[1]/div/div/ul[2]"""+
-                                                """/li[3]/ul/li[1]/a""", 10)
-        elemento_clientes.click()
+        if elemento_contatos:
+            actions.move_to_element(elemento_contatos).perform()
+            elemento_clientes = procura_elemento(driver, """//*[@id="page-organization-details"]"""+
+                                                    """/div[5]/div/div[1]/div/div/ul[2]"""+
+                                                    """/li[3]/ul/li[1]/a""", 10)
+            elemento_clientes.click()
+            time.sleep(1)
     except Exception as web_error:
         print (web_error)
     try:
@@ -647,22 +703,22 @@ def gera_boleto():
                             boleto = False
                             break
                         elif boleto == False:
-                            cliente = procura_cliente(nome_pasta_cliente.replace("S S", "S/S"))
+                            cliente = procura_cliente(nome_pasta_cliente)
                             if cliente:
-                                print(cliente)
-                                input()
                                 cliente_id = cliente[0]
                                 cliente_cnpj = cliente[2]
                                 cliente_cpf = cliente[3]
                                 valores = procura_valores(cliente_id)
                                 if valores:
-                                    print(f"{nome_pasta_cliente} vai precisar de um boleto.")
+                                    valor_fatura = valores[21]
+                                    print(f"{nome_pasta_cliente} vai precisar de um boleto. Valor da fatura é: {valor_fatura}")
                                     elemento_search = procura_elemento(driver, """//*[@id="entityList_filter"]"""+
-                                                                      """/label/input""", 10)                              
-                                    if not cliente_cnpj == '' or not cliente_cnpj == None:
-                                        elemento_search.send_keys(cliente_cnpj)
-                                    elif not cliente_cpf == '' or not cliente_cpf == None:
-                                        elemento_search.send_keys(cliente_cpf)                       
+                                                                      """/label/input""", 10)   
+                                    if elemento_search:                           
+                                        if not cliente_cnpj == '' or not cliente_cnpj == None:
+                                            elemento_search.send_keys(cliente_cnpj)
+                                        elif not cliente_cpf == '' or not cliente_cpf == None:
+                                            elemento_search.send_keys(cliente_cpf)                       
                                     time.sleep(2)
                                     try:
                                         elemento_lista_clientes = procura_todos_elementos(driver,"""//*[@id="entityList"]"""+
@@ -674,22 +730,28 @@ def gera_boleto():
                                         if cliente_lista.text.__contains__(cliente_cnpj) or cliente_lista.text.__contains__(cliente_cpf):
                                             cliente_lista.click()
                                             try:
-                                                elemento_sem_lancamento = procura_elemento(driver, """/html/body/div[5]/div/div[2]/div[3]"""+
-                                                                                        """/div/div/div[2]/div[2]/div/div[3]/div/div/p""", 10)
+                                                elemento_sem_lancamento = procura_elemento(driver, """/html/body/div[*]/div/div[2]/div[3]"""+
+                                                                                        """/div/div/div[2]/div[2]/div/div[3]/div/div/p""", 5)
+
                                                 if elemento_sem_lancamento:
-                                                    agendar_lancamento(driver)
-                                                    input()  
+                                                    time.sleep(0.7)
+                                                    agendar_lancamento(driver, valor_fatura)
+                                                    time.sleep(1.5)
+                                                    baixar_boleto_lancamento(driver, elemento_search)
+                                                elif elemento_sem_lancamento == None:
+                                                    time.sleep(0.7)
+                                                    baixar_boleto_lancamento(driver, elemento_search)
                                             except NoSuchElementException:
-                                                baixar_boleto_lancamento(driver)
-                                                input()
+                                                print("Algum objeto nao foi encontrado!")
                                 else:
                                     print(f"Valores de financeiro não encontrados para {nome_pasta_cliente}")
                             else:
-                                print(f"Cliente {nome_pasta_cliente} não encontrado!") 
+                                print(f"Cliente {nome_pasta_cliente} não encontrado!")                    
     except Exception as error:
         print(error)
-    input()
-    driver.quit()
+    print("PROCESSO DE BOLETO ENCERRADO!")
+    input()   
+    driver.quit() 
 
 def envia_arquivos():
     try:    
@@ -697,7 +759,7 @@ def envia_arquivos():
     except Exception as error:
         print (error)
 
-# ========================CÓDIGO PRINCIPAL DO ROBÔ===========================
+# ========================LÓGICA DE EXECUÇÃO DO ROBÔ===========================
 if rotina == "1. Organizar Extratos":
     organiza_extratos()
     gera_fatura()
