@@ -85,6 +85,47 @@ def procura_valores(cliente_id):
         values_procura_valores = (cliente_id, mes, ano)
         with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
             cursor.execute(query_procura_valores, values_procura_valores)
+            valores = cursor.fetchall()
+            conn.commit()
+        if valores and len(valores) == 1:
+            return valores
+        elif valores and len(valores) >= 1:
+            query_valores = """
+                            SELECT cliente_id, 
+                            ROUND(SUM(convenio_farmacia), 2) AS convenio_farmacia,
+                            ROUND(SUM(adiant_salarial), 2) AS adiant_salarial,
+                            SUM(numero_empregados) AS numero_empregados,
+                            SUM(numero_estagiarios) AS numero_estagiarios,
+                            SUM(trabalhando) AS trabalhando,
+                            ROUND(SUM(salario_contri_empregados), 2) AS salario_contri_empregados,
+                            ROUND(SUM(salario_contri_contribuintes), 2) AS salario_contri_contribuintes,
+                            ROUND(SUM(soma_salarios_provdt), 2) AS soma_salarios_provdt,
+                            ROUND(SUM(inss), 2) AS inss,
+                            ROUND(SUM(fgts), 2) AS fgts,
+                            ROUND(SUM(irrf), 2) AS irrf,
+                            ROUND(SUM(salarios_pagar), 2) AS salarios_pagar
+                            FROM clientes_financeiro_valores WHERE cliente_id = %s AND mes = %s and ano = %s
+                            GROUP BY cliente_id;
+                            """
+            values = (cliente_id, mes, ano)
+            with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
+                cursor.execute(query_valores, values)
+                valores = cursor.fetchone()
+                conn.commit()
+            return valores
+    except Exception as error:
+        print(error)
+
+def procura_valores_com_codigo(cliente_id, cod_centro_custo):
+    try:
+        # SE ACHAR O CLIENTE VERIFICA SE OS VALORES DO EXTRATO JÁ NÃO FORAM REGISTRADOS                  
+        query_procura_valores = """
+                                SELECT * FROM clientes_financeiro_valores WHERE 
+                                cliente_id = %s AND cod_empresa = %s AND mes = %s AND ano = %s 
+                                """
+        values_procura_valores = (cliente_id, cod_centro_custo, mes, ano)
+        with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
+            cursor.execute(query_procura_valores, values_procura_valores)
             valores = cursor.fetchone()
             conn.commit()
         if valores:
@@ -305,21 +346,23 @@ def organiza_extratos():
 
                     # VARREDURA DE DADOS DO EXTRATO PDF
                     # Exemplo de extração para Texto
+
+                    # Nome do Centro de Custo
                     match_centro_custo = re.search(r"C\.Custo:\s*(.*)", texto_pdf)
                     if match_centro_custo:
                         nome_centro_custo = match_centro_custo.group(1).replace("í", "i").replace("ó", "o")
-                        #print(f"Centro de Custo: {nome_centro_custo}")
                         partes = nome_centro_custo.split(" - ", 1)
                         if len(partes) > 1:
                             nome_centro_custo_mod = partes[1].strip()
-                    
+                            cod_centro_custo = partes[0].strip()
+
                     # PROCURA CLIENTE AO QUAL O EXTRATO PERTENCE
-                    print(nome_centro_custo_mod)
+                    print(nome_centro_custo_mod, cod_centro_custo)
                     cliente = procura_cliente(nome_centro_custo_mod)
                     if cliente:
                         cliente_id = cliente[0]
                         caminho_pasta_cliente = procura_pasta_cliente(nome_centro_custo_mod)
-                        valores_extrato = procura_valores(cliente_id)
+                        valores_extrato = procura_valores_com_codigo(cliente_id, cod_centro_custo)
                         if valores_extrato:
                             print("Esses valores de extrato ja foram registrados!\n")
                             print(f"Cliente: {cliente}\n Caminho da pasta: {caminho_pasta_cliente}\n Extrato: {extrato}\n")
@@ -448,13 +491,13 @@ def organiza_extratos():
 
                             # INSERÇÃO DE DADOS NO BANCO
                             query_insert_valores = """INSERT INTO clientes_financeiro_valores 
-                                                    (cliente_id, convenio_farmacia, adiant_salarial, numero_empregados, 
+                                                    (cliente_id, cod_empresa, convenio_farmacia, adiant_salarial, numero_empregados, 
                                                     numero_estagiarios, trabalhando, salario_contri_empregados, 
                                                     salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, irrf, 
                                                     salarios_pagar, mes, ano)
-                                                    VALUES (%s, %s,  %s,  %s,  %s,  %s,  %s,  %s,  %s,  %s,  %s,  %s, %s, %s, %s)
+                                                    VALUES (%s, %s, %s,  %s,  %s,  %s,  %s,  %s,  %s,  %s,  %s,  %s,  %s, %s, %s, %s)
                                                     """
-                            values_insert_valores = (cliente_id, convenio_farmacia, adiant_salarial, num_empregados, 
+                            values_insert_valores = (cliente_id, cod_centro_custo, convenio_farmacia, adiant_salarial, num_empregados, 
                                                         num_estagiarios, trabalhando, salario_contri_empregados, 
                                                         salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, 
                                                         irrf, liquido_centro_custo, mes, ano
@@ -517,6 +560,8 @@ def gera_fatura():
                                 cliente_id = cliente[0]
                                 valores_financeiro = procura_valores(cliente_id)
                                 if valores_financeiro:
+                                    print(valores_financeiro)
+                                    input()
                                     caminho_sub_pasta = Path(sub_pasta)
 
                                     # Variáveis para planilha
@@ -755,7 +800,29 @@ def gera_boleto():
 
 def envia_arquivos():
     try:    
-        print("Processo de enviar os arquivos para cada cliente (extrato, fatura, boleto)")
+        for diretorio in lista_dir_clientes:
+            pastas_regioes = listagem_pastas(diretorio)
+            for pasta_cliente in pastas_regioes:
+                nome_pasta_cliente = pega_nome(pasta_cliente)
+                sub_pastas_cliente = listagem_pastas(pasta_cliente)
+                for sub_pasta in sub_pastas_cliente:
+                    if sub_pasta.__contains__(f"{mes}-{ano}"):
+                        extrato = False
+                        fatura = False
+                        boleto = False
+                        arquivos_cliente = listagem_arquivos(sub_pasta)
+                        for arquivo in arquivos_cliente:
+                            if arquivo.__contains__("Extrato_Mensal") and arquivo.__contains__(nome_pasta_cliente):
+                                extrato = True
+                            elif arquivo.__contains__("Fatura_Detalhada") and arquivo.__contains__(nome_pasta_cliente):
+                                fatura = True
+                            elif arquivo.__contains__("Boleto_Recebimento_") and arquivo.__contains__(nome_pasta_cliente):
+                                boleto = True
+                            print(arquivo)
+                        print(f"Extrato: {extrato}, Fatura: {fatura}, Boleto: {boleto}")
+                        if extrato == True and fatura == True and boleto == True:
+                            print(f"Fará o envio para o cliente {nome_pasta_cliente}")
+                            input()
     except Exception as error:
         print (error)
 
