@@ -28,9 +28,22 @@ def listagem_arquivos(diretorio):
     except Exception as exc:
         print(f"Ocorreu alguma falha no processo: {exc}")
 
+def listagem_arquivos_downloads():
+    try:
+        downloads = os.path.expanduser("~") + "\\Downloads"
+        lista_arquivos = []
+        for arquivo in Path(downloads).iterdir():
+            if arquivo.is_file():
+                lista_arquivos.append(str(arquivo))
+        return lista_arquivos
+    except FileNotFoundError as notFoundError:
+        print(notFoundError)
+    except Exception as exc:
+        print(f"Ocorreu alguma falha no processo: {exc}")
+
 def pega_nome(path):
     try:
-        nome_pasta = os.path.basename(path)
-        return nome_pasta
+        nome_objeto = os.path.basename(path)
+        return nome_objeto
     except Exception as exc:
         print(f"Ocorreu alguma falha no processo: {exc}")

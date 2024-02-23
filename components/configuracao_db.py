@@ -24,3 +24,7 @@ def configura_db():
             print(err) 
     
     return db_conf, conn, cursor
+
+def ler_sql(arquivo_sql):
+    with open(arquivo_sql, 'r', encoding='utf-8') as arquivo:
+        return arquivo.read()
