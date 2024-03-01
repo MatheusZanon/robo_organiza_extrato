@@ -19,6 +19,7 @@ mensal_ponto_elet,
 saude_seguranca_trabalho,
 percentual_human,
 economia_mensal,
-total_fatura
+total_fatura,
+anexo_enviado
 FROM clientes_financeiro_valores WHERE 
 cliente_id = %s AND mes = %s AND ano = %s

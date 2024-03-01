@@ -1,7 +1,6 @@
 # =========================IMPORTAÇÕES DE BIBLIOTECAS E COMPONENTES========================
 from components.importacao_diretorios_windows import listagem_pastas, listagem_arquivos,listagem_arquivos_downloads, pega_nome
 from components.extract_text_pdf import extract_text_pdf
-from components.importacao_automacao_excel_pandas import carrega_arquivo
 from components.importacao_caixa_dialogo import DialogBox
 from components.checar_ativacao_google_drive import checa_google_drive
 from components.configuracao_db import configura_db, ler_sql
@@ -22,6 +21,7 @@ import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import  NoSuchElementException
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
@@ -40,6 +40,8 @@ checa_google_drive()
 chrome_options, servico = configura_selenium_driver()
 automacao_email = os.getenv('SELENIUM_USER')
 automacao_senha = os.getenv('SELENIUM_PASSWORD')
+email_gestor = os.getenv('EMAIL_GESTOR')
+corpo_email = os.getenv('CORPO_EMAIL')
 
 # ==================CAIXA DE DIALOGO INICIAL============================
 def main():
@@ -73,7 +75,6 @@ def pega_valores_vales_reembolsos(cliente_id, centro_custo):
             vale_refeicao = str(vales['Vale Refeição'].values[0]).replace("R$", "").replace(",", ".")
             ponto_eletronico = str(vales['Ponto Eletrônico'].values[0]).replace("R$", "").replace(",", ".")
             sst = str(vales['Saúde/Segurança do Trabalho'].values[0]).replace("R$", "").replace(",", ".")
-            print(vale_transporte, assinat_eletronica, vale_refeicao, ponto_eletronico, sst)
         else:
             vale_transporte = 0
             assinat_eletronica = 0
@@ -85,15 +86,23 @@ def pega_valores_vales_reembolsos(cliente_id, centro_custo):
         reembolsos = df_reembolsos[(df_reembolsos['CLIENTE'] == centro_custo) & (df_reembolsos['Descrição'].notnull()) & (df_reembolsos['Valor'].notnull())]
         descricao_reembolsos = reembolsos['Descrição'].tolist()
         valores_reembolsos = reembolsos['Valor'].tolist()
-        print(descricao_reembolsos, valores_reembolsos)
-        input()
+
         if not descricao_reembolsos == [] and not valores_reembolsos == []:
             for i in range(len(valores_reembolsos)):
-                query_insert_reembolsos = ler_sql('sql/registrar_valores_reembolsos.sql')
-                values = (cliente_id, descricao_reembolsos[i], valores_reembolsos[i], mes, ano)
+                query_search_reembolsos = ler_sql('sql/procura_valor_unico_reembolsos.sql')
+                values_search = (cliente_id, descricao_reembolsos[i], valores_reembolsos[i], mes, ano)
                 with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                    cursor.execute(query_insert_reembolsos, values)
+                    cursor.execute(query_search_reembolsos, values_search)
+                    reembolso = cursor.fetchone()
                     conn.commit()
+                if reembolso == None:
+                    query_insert_reembolsos = ler_sql('sql/registrar_valores_reembolsos.sql')
+                    values_insert = (cliente_id, descricao_reembolsos[i], valores_reembolsos[i], mes, ano)
+                    with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
+                        cursor.execute(query_insert_reembolsos, values_insert)
+                        conn.commit()
+                else:
+                    print("Reembolso já cadastrado!")
         return vale_transporte, assinat_eletronica, vale_refeicao, ponto_eletronico, sst
     except Exception as error:
         print(error)
@@ -165,24 +174,30 @@ def procura_valores_com_codigo(cliente_id, cod_centro_custo):
 def procura_pasta_cliente(nome):
     try:
         nome = nome.replace("S/S", "S S")
-        caminho_pasta_cliente = ""
+        caminho_pasta_cliente = None
         for diretorio in lista_dir_clientes:
-            if not caminho_pasta_cliente == "":
+            if not caminho_pasta_cliente == None:
                 break 
             else:
                 pastas_cliente = listagem_pastas(diretorio)
                 for pasta in pastas_cliente:
-                    if not caminho_pasta_cliente == "":
+                    if not caminho_pasta_cliente == None:
                         break 
                     else:
                         nome_pasta_cliente = pega_nome(pasta)
                         if nome_pasta_cliente == nome:
+                            print("Encontrou pasta do cliente:", pasta)
                             sub_pastas_cliente = listagem_pastas(pasta)
                             for sub_pasta in sub_pastas_cliente:
                                 if sub_pasta.__contains__(f"{mes}-{ano}"):
                                     caminho_pasta_cliente = sub_pasta
-                                    break
-        return caminho_pasta_cliente
+                                    return caminho_pasta_cliente
+                                else:
+                                    caminho_pasta_cliente = None
+                            if caminho_pasta_cliente == None:
+                                os.makedirs(f"{pasta}\\{mes}-{ano}")
+                                caminho_pasta_cliente = f"{pasta}\\{mes}-{ano}"
+                                return caminho_pasta_cliente
     except Exception as error:
         print(error)
 
@@ -247,7 +262,7 @@ def encontrar_elemento_shadow_root(driver, host, elemento, timeout):
             break  # Sai do loop se o tempo limite for atingido
     return None
 
-def agendar_lancamento(driver, valor_fatura):
+def agendar_lancamento(driver, valor_fatura, actions):
     print("AGENDANDO LANÇAMENTO")
     try:
         elemento_agenda_lancamento = procura_elemento(driver, "xpath", """//*[@id="EntityDetailsContainer"]/h4[1]/a""", 15)
@@ -262,26 +277,42 @@ def agendar_lancamento(driver, valor_fatura):
                 elif int(mes) > 9:
                     mes_agenda = str(int(mes) + 1)
                 ano_agenda = ano
-            texto_data_lancamento = f"02/{mes_agenda}/{ano_agenda}"
-
+            texto_data_lancamento = f"02{mes_agenda}{ano_agenda}"
+            sleep(2)
             # Vencimento
             elemento_vencimento = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create >"""+
                                                                  """ div > div.modal-body > form > div:nth-child(2) > div:nth-child(2) > form-helper:nth-child(1)"""+
                                                                  """ > div:nth-child(1) > div > calendar > div > div > div > input""", 2)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('click', {{'bubbles': true}}));", elemento_vencimento)
             driver.execute_script(f"""arguments[0].value='{texto_data_lancamento}'""", elemento_vencimento)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('input', {{'bubbles': true}}));", elemento_vencimento)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('change', {{'bubbles': true}}));", elemento_vencimento)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('blur', {{'bubbles': true}}));", elemento_vencimento)
+            print("Vencimento")
             sleep(0.1)
 
             # Previsão
             elemento_previsao = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create > """+
                                                                """div > div.modal-body > form > div:nth-child(2) > div:nth-child(2) > form-helper:nth-child(2)"""+
                                                                """ > div:nth-child(1) > div > calendar > div > div > div > input""", 2)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('click', {{'bubbles': true}}));", elemento_previsao)
             driver.execute_script(f"""arguments[0].value='{texto_data_lancamento}'""", elemento_previsao)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('input', {{'bubbles': true}}));", elemento_previsao)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('change', {{'bubbles': true}}));", elemento_previsao)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('blur', {{'bubbles': true}}));", elemento_previsao)
+            print("Previsão")
             sleep(0.1)
 
             # Descrição
             elemento_descricao = encontrar_elemento_shadow_root(driver, "#app", "#description", 2)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('click', {{'bubbles': true}}));", elemento_descricao)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('select', {{'bubbles': true}}));", elemento_descricao)
             driver.execute_script("""arguments[0].value='Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, """+
                                   f"""vale transporte e taxa de administração de pessoas {mes}/{ano}'""", elemento_descricao)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('input', {{'bubbles': true}}));", elemento_descricao)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('change', {{'bubbles': true}}));", elemento_descricao)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('blur', {{'bubbles': true}}));", elemento_descricao)
+            print("Descricão")
             sleep(0.1)
 
             # Categoria
@@ -290,7 +321,14 @@ def agendar_lancamento(driver, valor_fatura):
                                                                 """fieldset > div.ng-untouched.ng-valid.ng-dirty > div > app-schedule-category-item > div > """+
                                                                 """form-helper.col-4 > div:nth-child(1) > div > app-category-select > ng-select > div > div > """+
                                                                 """div.ng-input > input[type=text]""", 2)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('click', {{'bubbles': true}}));", elemento_categoria)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('select', {{'bubbles': true}}));", elemento_categoria)
             driver.execute_script(f"""arguments[0].value='Gestão de Mão de Obra Terceirizada'""", elemento_categoria)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('input', {{'bubbles': true}}));", elemento_categoria)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('change', {{'bubbles': true}}));", elemento_categoria)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('blur', {{'bubbles': true}}));", elemento_categoria)
+            actions.send_keys(Keys.ENTER).perform()
+            print("Categoria")
             sleep(0.1)
 
             # Valor
@@ -298,7 +336,18 @@ def agendar_lancamento(driver, valor_fatura):
                                                             """> div > div.modal-body > form > div:nth-child(2) > div.row.mt-3 > app-schedule-category """+
                                                             """> fieldset > div.ng-untouched.ng-valid.ng-dirty > div > app-schedule-category-item > div > """+
                                                             """div > form-helper > div:nth-child(1) > div > input""", 2)
-            driver.execute_script(f"""arguments[0].value='{valor_fatura}'""", elemento_valor)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('click', {{'bubbles': true}}));", elemento_valor)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('select', {{'bubbles': true}}));", elemento_valor)
+            sleep(0.1)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('keydown', {{'bubbles': true}}));", elemento_valor)
+            driver.execute_script(f"""arguments[0].value=''""", elemento_valor)
+            for i in range(1, len(valor_fatura) + 1):
+                substring_atual = valor_fatura[:i]
+                driver.execute_script(f"arguments[0].value = '{substring_atual}';", elemento_valor)
+                sleep(0.1)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('keypress', {{'bubbles': true}}));", elemento_valor)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('keyup', {{'bubbles': true}}));", elemento_valor)
+            print("Valor")
             sleep(0.1)
 
             # Automatizar Cobrança
@@ -313,18 +362,18 @@ def agendar_lancamento(driver, valor_fatura):
             driver.execute_script(f"""arguments[0].click();""", elemento_envio_imediato)
             sleep(0.1)
 
-            # TODO CLICAR NO BOTAO DE AGENDAR LA BOLETA
+            elemento_agendar = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create > div > """+
+                                                               """div.modal-footer.justify-content-between > div.d-flex.align-items-center.form-check-inline > button""", 10)
+            driver.execute_script("""return arguments[0].click();""", elemento_agendar)
 
-            # Botão Fechar
-            elemento_fechar = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create > div > """+
-                                                             """modal-header > div > button""", 10)
-            driver.execute_script("""return arguments[0].click();""", elemento_fechar)
-            sleep(0.2)
+            sleep(2)
+            driver.refresh()
     except Exception as error:
         print(error)
 
-def baixar_boleto_lancamento(driver, elemento_search):
+def baixar_boleto_lancamento(driver, valor_fatura, elemento_search, actions):
     print("BAIXANDO BOLETO")
+    achou_lancamento = False
     try:
         elemento_lista_lancamentos = procura_todos_elementos(driver, "xpath", """//*[@id="openScheduleList"]/tbody/tr[*]/td[2]/a""", 8)
     except TypeError:
@@ -334,14 +383,15 @@ def baixar_boleto_lancamento(driver, elemento_search):
             for elemento in elemento_lista_lancamentos:
                 if ("Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, "+
                     f"vale transporte e taxa de administração de pessoas {mes}/{ano}") in elemento.text:
+                    achou_lancamento = True
                     elemento.click()
                     sleep(0.5)
                     indice = 1
-                    achouElemento = False
-                    while achouElemento == False:
+                    achou_elemento = False
+                    while achou_elemento == False:
                         elemento_cobrar_boleto = encontrar_elemento_shadow_root(driver, "#app", f"#ngb-nav-{str(indice)}", 1)
                         if elemento_cobrar_boleto and "Cobrar via boleto" in elemento_cobrar_boleto.text:
-                            achouElemento = True
+                            achou_elemento = True
                             driver.execute_script("""return arguments[0].click();""", elemento_cobrar_boleto)
                             sleep(0.2)
                             elemento_download = encontrar_elemento_shadow_root(driver, "#app", f"""#ngb-nav-{str(indice)}-panel > settings > div > app-schedule-entry-promise > """+
@@ -351,15 +401,24 @@ def baixar_boleto_lancamento(driver, elemento_search):
                             driver.execute_script("""return arguments[0].click();""", elemento_download)
                         else:
                             indice += 1
+                    sleep(1.5)
                     elemento_fechar = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-details """+
                                                                     """> div > modal-header > div > button""", 10)
                     driver.execute_script("""return arguments[0].click();""", elemento_fechar)
-                    sleep(0.2)
+                    sleep(0.5)
                     elemento_search.clear()
                     break
+                else:
+                    achou_lancamento = False   
+            if achou_lancamento == False:
+                print("Lançamento do mês não encontrado, fazendo novo agendamento...")
+                input()
+                agendar_lancamento(driver, valor_fatura, actions)
+                baixar_boleto_lancamento(driver, valor_fatura, elemento_search, actions)
         else:
             elemento_search.clear()
             print("Nenhum lançamento encontrado!")
+            input()
     except Exception as error:
         print(f"Deu algum erro ao tentar baixar o boleto: {error}")
 
@@ -405,9 +464,7 @@ def organiza_extratos():
                         partes = nome_centro_custo.split(" - ", 1)
                         if len(partes) > 1:
                             nome_centro_custo_mod = partes[1].strip()
-                            cod_centro_custo = partes[0].strip()
-                    
-                    print(nome_centro_custo)
+                            cod_centro_custo = partes[0].strip()                   
 
                     cliente = procura_cliente(nome_centro_custo_mod)
                     if cliente:
@@ -430,6 +487,12 @@ def organiza_extratos():
                                 adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
                             else: 
                                 adiant_salarial = 0
+                            if adiant_salarial == 0:
+                                match_adiant_salarial = search(r"981DESC.ADIANT.SALARIAL\s*([\d.,]+)", texto_pdf)
+                                if match_adiant_salarial:
+                                    adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
+                                else: 
+                                    adiant_salarial = 0
 
                             # NUMERO DE EMPREGADOS
                             match_demitido = search(r"No. Empregados: Demitido:\s*(\d+)", texto_pdf)
@@ -536,18 +599,13 @@ def organiza_extratos():
                                 cursor.execute(query_insert_valores, values_insert_valores)
                                 conn.commit()
 
-                            # Caminho do arquivo PDF
                             caminho_pdf = Path(extrato)
                             if not nome_extrato.__contains__(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{mes}.{ano}"):
-                                novo_nome_extrato = caminho_pdf.with_name(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{mes}.{ano}.pdf")
+                                novo_nome_extrato = caminho_pdf.with_name(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S").strip()}_{mes}.{ano}.pdf")
                                 caminho_pdf_mod = caminho_pdf.rename(novo_nome_extrato)
                             else:
                                 caminho_pdf_mod = caminho_pdf
-                            # Caminho da pasta de destino (o caminho que vem da sua variável)
                             caminho_destino = Path(caminho_pasta_cliente)
-                            # Verifica se a pasta de destino existe; se não, cria a pasta
-                            caminho_destino.mkdir(parents=True, exist_ok=True)
-                            # Copiar o arquivo PDF para a pasta de destino
                             copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
                     else:
                         print("Cliente não encontrado!\n")
@@ -580,23 +638,17 @@ def gera_fatura():
                             fatura_pronta = False
                             break
                         elif fatura_pronta == False:
-                            print(pasta_cliente, fatura_pronta)
                             cliente = procura_cliente(nome_pasta_cliente)
                             if cliente:
                                 cliente_id = cliente[0]
                                 valores_financeiro = procura_valores(cliente_id)
                                 if valores_financeiro:
-                                    print(valores_financeiro)
-                                    input()
                                     caminho_sub_pasta = Path(sub_pasta)
-
                                     # Variáveis para planilha
                                     nome_fatura = f"Fatura_Detalhada_{nome_pasta_cliente}_{mes}.{ano}.xlsx"
-                                    caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"
-                                    
+                                    caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"             
                                     # COPIANDO A FATURA MODELO PARA A PASTA DO CLIENTE
-                                    copy(modelo_fatura, caminho_sub_pasta / nome_fatura)
-                                   
+                                    copy(modelo_fatura, caminho_sub_pasta / nome_fatura)              
                                     try:
                                         # FORMATANDO A FATURA                                       
                                         workbook = load_workbook(caminho_fatura)
@@ -681,7 +733,6 @@ def gera_fatura():
                                             sst = valores_financeiro[17]
                                         else:
                                             sst = 0
-
                                         #reembolsos
                                         query_procura_reembolsos = ler_sql('sql/procura_valores_reembolsos.sql')
                                         values_procura_reembolsos = (cliente_id, mes, ano)
@@ -689,20 +740,30 @@ def gera_fatura():
                                             cursor.execute(query_procura_reembolsos, values_procura_reembolsos)
                                             reembolsos = cursor.fetchall()
                                             conn.commit()
+                                        reembolso_total = 0
+                                        LINHA = 19 
                                         if not reembolsos == []:
-                                            reembolso_total = 0
                                             cel_1 = 23
                                             cel_2 = 24
                                             for reembolso in reembolsos:
                                                 cel_1 += 1
                                                 cel_2 += 1
                                                 sheet.insert_rows(19)
-                                                sheet['A19'] = reembolso[0]
-                                                sheet['J19'] = reembolso[1]
-                                                sheet['J19'].style = style_moeda
-                                                sheet['G19'].border = Border(left=Side(style='thin'))
-                                                sheet['I19'].border = Border(right=Side(style='thin'))
-                                                sheet['L19'].border = Border(right=Side(style='thin'))
+                                                sheet[f'J{LINHA}'].style = style_moeda
+                                                sheet[f'A{LINHA}'].border = Border(bottom=Side(style='thin'), left=Side(style='thin'))
+                                                sheet[f'B{LINHA}'].border = Border(bottom=Side(style='thin'))
+                                                sheet[f'C{LINHA}'].border = Border(bottom=Side(style='thin'))
+                                                sheet[f'D{LINHA}'].border = Border(bottom=Side(style='thin'))
+                                                sheet[f'E{LINHA}'].border = Border(bottom=Side(style='thin'))
+                                                sheet[f'F{LINHA}'].border = Border(bottom=Side(style='thin'))
+                                                sheet[f'G{LINHA}'].border = Border(bottom=Side(style='thin'), left=Side(style='thin'))
+                                                sheet[f'H{LINHA}'].border = Border(bottom=Side(style='thin'))
+                                                sheet[f'I{LINHA}'].border = Border(bottom=Side(style='thin'), right=Side(style='thin'))
+                                                sheet[f'J{LINHA}'].border = Border(bottom=Side(style='thin'))
+                                                sheet[f'K{LINHA}'].border = Border(bottom=Side(style='thin'))
+                                                sheet[f'L{LINHA}'].border = Border(bottom=Side(style='thin'), right=Side(style='thin'))
+                                                sheet[f'A{LINHA}'] = reembolso[0]
+                                                sheet[f'J{LINHA}'] = reembolso[1]
                                                 sheet[f'J{cel_1 - 4}'] = f'=E11*H{cel_1 - 4}'
                                                 sheet[f'J{cel_1 - 3}'] = f'=SUM(J7:L{cel_1 - 4})'
                                                 sheet[f'H{cel_1 + 2}'] = f'=H{cel_1}-H{cel_2}'
@@ -711,24 +772,22 @@ def gera_fatura():
                                                 sheet[f'J{cel_1 + 2}'] = f'=J{cel_1}-J{cel_2}'
                                                 reembolso_total = reembolso_total + reembolso[1]
                                         # provisao de direitos trabalhistas
-                                        prov_direitos = soma_salarios_provdt * 0.3487
+                                        prov_direitos = round(soma_salarios_provdt * 0.3487, 2)
                                         # percentual human
-                                        percent_human = soma_salarios_provdt * 0.12
+                                        percent_human = round(soma_salarios_provdt * 0.12, 2)
                                         # economia mensal
                                         valor1 = round(soma_salarios_provdt * 0.8027, 2)
                                         valor2 = round(soma_salarios_provdt * 0.4287, 2)
                                         eco_mensal = valor1 - valor2
                                         workbook.save(caminho_fatura)
                                         workbook.close()
-
                                         # valor total da fatura
                                         fatura = (salarios_pagar + inss + fgts + adiant_salarial + prov_direitos
                                                   + irrf + mensal_ponto + assinatura_elet + vale_transp + vale_refeic
                                                   + sst + conv_farmacia + percent_human + reembolso_total
                                                  )
                                         total_fatura = round(fatura, 2)
-                                        print(f"Total da Fatura: {total_fatura}")
-                                        input()
+
                                         # GERANDO PDF DA FATURA
                                         try:
                                             print("Terminada a formatação da fatura, gerando pdf...")
@@ -740,14 +799,11 @@ def gera_fatura():
                                             ws.ExportAsFixedFormat(0, sub_pasta + f"\\Fatura_Detalhada_{nome_pasta_cliente}_{mes}.{ano}")
                                             wb.Close()
                                             excel.Quit()
-                                            print("Pdf gerado com sucesso.")
-
                                             print("Inserindo valores no banco.")
                                             query_fatura = ler_sql('sql/registrar_valores_fatura.sql')
                                             with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
                                                 cursor.execute(query_fatura, (percent_human, eco_mensal, total_fatura, cliente_id, mes, ano))
                                                 conn.commit()
-                                            print("Valores inseridos com sucesso!")
                                         except Exception as error:
                                             wb.Close()
                                             wb.Quit()
@@ -790,6 +846,7 @@ def gera_boleto():
                 sub_pastas_cliente = listagem_pastas(pasta_cliente)
                 for sub_pasta in sub_pastas_cliente:
                     if sub_pasta.__contains__(f"{mes}-{ano}"):
+                        caminho_destino = Path(sub_pasta)
                         arquivos_cliente = listagem_arquivos(sub_pasta)
                         for arquivo in arquivos_cliente:
                             if arquivo.__contains__("Boleto_Recebimento_") and arquivo.__contains__(nome_pasta_cliente):
@@ -797,21 +854,19 @@ def gera_boleto():
                                 break
                             else:
                                 boleto = False
-                        print(pasta_cliente, boleto)
                         if boleto == True:
                             boleto = False
                             break
                         elif boleto == False:
                             cliente = procura_cliente(nome_pasta_cliente)
-                            print(cliente)
                             if cliente:
                                 cliente_id = cliente[0]
                                 cliente_cnpj = cliente[2]
                                 cliente_cpf = cliente[3]
                                 valores = procura_valores(cliente_id)
                                 if valores:
-                                    print(valores)
                                     valor_fatura = valores[20]
+                                    valor_fatura_formatado = f"{valor_fatura:.2f}".replace(".", ",")
                                     print(f"{nome_pasta_cliente} vai precisar de um boleto. Valor da fatura é: {valor_fatura}")
                                     elemento_search = procura_elemento(driver, "xpath", """//*[@id="entityList_filter"]"""+
                                                                       """/label/input""", 15)   
@@ -830,25 +885,25 @@ def gera_boleto():
                                     for cliente_lista in elemento_lista_clientes:
                                         if cliente_lista.text.__contains__(cliente_cnpj) or cliente_lista.text.__contains__(cliente_cpf):
                                             cliente_lista.click()
+                                            sleep(1)
                                             try:
                                                 sleep(0.7)
-                                                elemento_sem_lancamento = procura_elemento(driver, "class_name", """generic-list-no-content""", 15)
+                                                elemento_sem_lancamento = procura_elemento(driver, "class_name", """generic-list-no-content""", 4)
                                                 if elemento_sem_lancamento:
-                                                    agendar_lancamento(driver, valor_fatura)
+                                                    agendar_lancamento(driver, valor_fatura_formatado, actions)
                                                     sleep(1.5)
-                                                    baixar_boleto_lancamento(driver, elemento_search)
+                                                    baixar_boleto_lancamento(driver, valor_fatura_formatado, elemento_search, actions)
                                                 elif elemento_sem_lancamento == None:
-                                                    baixar_boleto_lancamento(driver, elemento_search)                                                   
-                                                sleep(2)
+                                                    baixar_boleto_lancamento(driver, valor_fatura_formatado, elemento_search, actions)                                                   
+                                                sleep(4)
                                                 arquivos_downloads = listagem_arquivos_downloads()
                                                 arquivo_mais_recente = max(arquivos_downloads, key=os.path.getmtime)
-                                                if (arquivo_mais_recente.__contains__(".pdf") and not 
-                                                    arquivo_mais_recente.__contains__(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{mes}.{ano}")):
+                                                if (arquivo_mais_recente.__contains__(".pdf") 
+                                                    and not arquivo_mais_recente.__contains__(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{mes}.{ano}")):
                                                     caminho_pdf = Path(arquivo_mais_recente)
                                                     novo_nome_boleto = caminho_pdf.with_name(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{mes}.{ano}.pdf")
                                                     caminho_pdf_mod = caminho_pdf.rename(novo_nome_boleto)
-                                                    caminho_destino = Path(pasta_cliente)
-                                                    caminho_destino.mkdir(parents=True, exist_ok=True)
+                                                    sleep(0.5)
                                                     copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
                                                     if os.path.exists(caminho_pdf_mod):
                                                         os.remove(caminho_pdf_mod)
@@ -865,16 +920,20 @@ def gera_boleto():
 
 def envia_arquivos():
     try:  
-        anexos = []  
         for diretorio in lista_dir_clientes:
             pastas_regioes = listagem_pastas(diretorio)
             for pasta_cliente in pastas_regioes:
+                anexos = []
+                extrato = False
+                fatura = False
+                boleto = False
                 nome_pasta_cliente = pega_nome(pasta_cliente)
                 sub_pastas_cliente = listagem_pastas(pasta_cliente)
                 for sub_pasta in sub_pastas_cliente:
                     if sub_pasta.__contains__(f"{mes}-{ano}"):
                         arquivos_cliente = listagem_arquivos(sub_pasta)
                         for arquivo in arquivos_cliente:
+                            print(os.path.basename(arquivo.replace("ã", "a").replace("õ", "o")))
                             if arquivo.__contains__("Extrato_Mensal_") and arquivo.__contains__(f"{nome_pasta_cliente}_{mes}.{ano}.pdf"):
                                 extrato = True
                                 anexos.append(arquivo)
@@ -884,29 +943,36 @@ def envia_arquivos():
                             elif arquivo.__contains__("Boleto_Recebimento_") and arquivo.__contains__(f"{nome_pasta_cliente}_{mes}.{ano}.pdf"):
                                 boleto = True
                                 anexos.append(arquivo)
-                        print(nome_pasta_cliente)
-                        print(f"Extrato: {extrato},\n Fatura: {fatura},\n Boleto: {boleto}")
-                        print(f"Arquivos:\n {anexos}")
                         if extrato == True and fatura == True and boleto == True:
                             try:
                                 cliente = procura_cliente(nome_pasta_cliente)
                                 if cliente:
                                     cliente_id = cliente[0]
+                                    cliente_email = cliente[4]
                                     valores_extrato = procura_valores(cliente_id)
-                                    if valores_extrato:
-                                        print(valores_extrato)
+                                    if valores_extrato and valores_extrato[21] == 0 and not cliente_email == None:
                                         print(f"Fará o envio para o cliente {nome_pasta_cliente}")
+                                        print(f"{cliente_email}, {email_gestor}")
+                                        print(anexos)
                                         input()
-                                        enviar_email_com_anexos("mzblannes@outlook.com", "Teste de Automacao", "testando componente de envio de emails com python", anexos)
-                                    else:
+                                        enviar_email_com_anexos(f"{cliente_email}, {email_gestor}", f"Documentos de Terceirização - {nome_pasta_cliente}", 
+                                                               f"{corpo_email}", anexos)
+                                        query_atualiza_anexos = ler_sql("sql/atualizar_anexos_cliente.sql")
+                                        values_anexos = (cliente_id, mes, ano)
+                                        with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
+                                            cursor.execute(query_atualiza_anexos, values_anexos)
+                                            conn.commit()
+                                        break
+                                    elif valores_extrato == None:
                                         print("Valores de financeiro não encontrados!")
+                                    elif valores_extrato[21] == 1:
+                                        print("Anexos já enviados para o cliente!")
+                                    elif cliente_email == None:
+                                        print("Cliente sem email!")
+                                else:
+                                    print("Cliente não encontrado!")
                             except Exception as error:
                                 print (error)
-                            finally:
-                                extrato = False
-                                anexos = []
-                                fatura = False
-                                boleto = False
                         else:
                             print("Cliente não possui todos os arquivos necessários para o envio!")
                             input()
@@ -929,4 +995,4 @@ elif rotina == "3. Gerar Boletos":
 elif rotina == "4. Enviar Arquivos":
     envia_arquivos()
 else:
-    print("Nenhuma rotina selecionada, encerrando o robô.")
+    print("Nenhuma rotina selecionada, encerrando o robô...")
