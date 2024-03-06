@@ -41,6 +41,27 @@ def listagem_arquivos_downloads():
     except Exception as exc:
         print(f"Ocorreu alguma falha no processo: {exc}")
 
+def procura_pasta_cliente(nome, lista_dir_clientes, mes, ano):
+    try:
+        nome = nome.replace("S/S", "S S")
+        caminho_pasta_cliente = None
+        for diretorio in lista_dir_clientes:
+            if not caminho_pasta_cliente == None:
+                break 
+            else:
+                pastas_cliente = listagem_pastas(diretorio)
+                for pasta in pastas_cliente:
+                    if not caminho_pasta_cliente == None:
+                        break 
+                    else:
+                        nome_pasta_cliente = pega_nome(pasta)
+                        if nome_pasta_cliente == nome:
+                            caminho_pasta_cliente = pasta
+                            return caminho_pasta_cliente
+        return caminho_pasta_cliente
+    except Exception as error:
+        print(error)
+
 def pega_nome(path):
     try:
         nome_objeto = os.path.basename(path)

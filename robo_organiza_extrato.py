@@ -1,9 +1,12 @@
 # =========================IMPORTAÇÕES DE BIBLIOTECAS E COMPONENTES========================
-from components.importacao_diretorios_windows import listagem_pastas, listagem_arquivos,listagem_arquivos_downloads, pega_nome
+from components.importacao_diretorios_windows import *
 from components.extract_text_pdf import extract_text_pdf
 from components.importacao_caixa_dialogo import DialogBox
 from components.checar_ativacao_google_drive import checa_google_drive
 from components.configuracao_db import configura_db, ler_sql
+from components.procura_cliente import procura_cliente, procura_pasta_cliente
+from components.procura_valores import procura_valores, procura_valores_com_codigo
+from components.procura_elementos_web import procura_elemento, procura_todos_elementos, encontrar_elemento_shadow_root
 from components.configuracao_selenium_drive import configura_selenium_driver
 from components.enviar_emails import enviar_email_com_anexos
 import tkinter as tk
@@ -66,7 +69,6 @@ planilha_reembolsos = Path(f"{particao}:\\Meu Drive\\Relatorio_Boletos_Salario_R
 # ==================== MÉTODOS DE AUXÍLIO====================================
 def pega_valores_vales_reembolsos(cliente_id, centro_custo):
     try:
-        print(centro_custo)
         df_vales_sst = pd.read_excel(planilha_vales_sst, usecols='C:H', skiprows=1)
         vales = df_vales_sst.loc[df_vales_sst['CLIENTE'] == centro_custo, ['Vale Transporte', 'Assinatura Eletronica', 'Vale Refeição', 'Ponto Eletrônico', 'Saúde/Segurança do Trabalho']]
         if not vales.empty:
@@ -107,161 +109,6 @@ def pega_valores_vales_reembolsos(cliente_id, centro_custo):
     except Exception as error:
         print(error)
 
-def procura_cliente(nome_cliente):
-    try:
-        query_procura_cliente = ler_sql('sql/procura_cliente.sql')
-        values_procura_cliente = (nome_cliente,)
-        with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-            cursor.execute(query_procura_cliente, values_procura_cliente)
-            cliente = cursor.fetchone()
-            conn.commit()
-        if cliente:
-            return cliente
-        else:
-            cliente_mod = procura_cliente_mod(str(nome_cliente).replace("S S", "S/S"))
-            return cliente_mod
-    except Exception as error:
-        print(error)
-
-def procura_cliente_mod(nome_cliente):
-    try:
-        query_procura_cliente = ler_sql('sql/procura_cliente.sql')
-        values_procura_cliente = (nome_cliente,)
-        with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-            cursor.execute(query_procura_cliente, values_procura_cliente)
-            cliente = cursor.fetchone()
-            conn.commit()
-        if cliente:
-            return cliente
-    except Exception as error:
-        print(error)
-
-def procura_valores(cliente_id):
-    try:                
-        query_procura_valores = ler_sql('sql/procura_valores_financeiro.sql')
-        values_procura_valores = (cliente_id, mes, ano)
-        with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-            cursor.execute(query_procura_valores, values_procura_valores)
-            valores = cursor.fetchall()
-            conn.commit()
-        if valores and len(valores) == 1:
-            valores_tupla = valores[0]
-            return valores_tupla
-        elif valores and len(valores) >= 1:
-            query_valores = ler_sql('sql/soma_valores_multiplos.sql')
-            values = (cliente_id, mes, ano)
-            with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                cursor.execute(query_valores, values)
-                valores = cursor.fetchone()
-                conn.commit()
-            return valores
-    except Exception as error:
-        print(error)
-
-def procura_valores_com_codigo(cliente_id, cod_centro_custo):
-    try:                
-        query_procura_valores = ler_sql('sql/procura_valor_com_codigo_empresa.sql')
-        values_procura_valores = (cliente_id, cod_centro_custo, mes, ano)
-        with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-            cursor.execute(query_procura_valores, values_procura_valores)
-            valores = cursor.fetchone()
-            conn.commit()
-        if valores:
-            return valores
-    except Exception as error:
-        print(error)
-
-def procura_pasta_cliente(nome):
-    try:
-        nome = nome.replace("S/S", "S S")
-        caminho_pasta_cliente = None
-        for diretorio in lista_dir_clientes:
-            if not caminho_pasta_cliente == None:
-                break 
-            else:
-                pastas_cliente = listagem_pastas(diretorio)
-                for pasta in pastas_cliente:
-                    if not caminho_pasta_cliente == None:
-                        break 
-                    else:
-                        nome_pasta_cliente = pega_nome(pasta)
-                        if nome_pasta_cliente == nome:
-                            print("Encontrou pasta do cliente:", pasta)
-                            sub_pastas_cliente = listagem_pastas(pasta)
-                            for sub_pasta in sub_pastas_cliente:
-                                if sub_pasta.__contains__(f"{mes}-{ano}"):
-                                    caminho_pasta_cliente = sub_pasta
-                                    return caminho_pasta_cliente
-                                else:
-                                    caminho_pasta_cliente = None
-                            if caminho_pasta_cliente == None:
-                                os.makedirs(f"{pasta}\\{mes}-{ano}")
-                                caminho_pasta_cliente = f"{pasta}\\{mes}-{ano}"
-                                return caminho_pasta_cliente
-    except Exception as error:
-        print(error)
-
-def procura_elemento(driver, tipo_seletor:str, elemento, tempo_espera):
-    """
-        Function to search for an element using the specified selector type, element, and wait time.
-        driver: The WebDriver instance to use for element search.
-        tipo_seletor: The type of selector to use (e.g., 'ID', 'CLASS_NAME', 'XPATH', 'TAG_NAME').
-        elemento: The element to search for.
-        tempo_espera: The maximum time to wait for the element to be located.
-        :return: The located element if found, otherwise None.
-    """
-    try:
-        seletor = getattr(By, tipo_seletor.upper())
-        WebDriverWait(driver, float(tempo_espera)).until(EC.presence_of_element_located((seletor, elemento)))
-        sleep(0.1)
-        elemento = WebDriverWait(driver, float(tempo_espera)).until(EC.visibility_of_element_located((seletor, elemento)))
-        if elemento.is_displayed() and elemento.is_enabled():
-            return elemento
-    except TimeoutException:
-        return None
-
-def procura_todos_elementos(driver, tipo_seletor:str, elemento, tempo_espera):
-    """
-    A function that searches for all elements based on the given selector type and element, within a specified waiting time.
-    
-    Args:
-        driver: The WebDriver instance to use for locating the elements.
-        tipo_seletor: A string representing the type of selector to use (e.g., 'ID', 'CLASS_NAME', 'XPATH', 'TAG_NAME').
-        elemento: The element to search for.
-        tempo_espera: The maximum time to wait for the elements to be present before throwing a TimeoutException.
-        
-    Returns:
-        A list of WebElement objects representing the found elements, or None if the elements are not found within the specified waiting time.
-    """
-    try:
-        seletor = getattr(By, tipo_seletor.upper())
-        WebDriverWait(driver, float(tempo_espera)).until(EC.presence_of_all_elements_located((seletor, elemento)))
-        sleep(0.1)
-        elementos = WebDriverWait(driver, float(tempo_espera)).until(EC.visibility_of_all_elements_located((seletor, elemento)))
-        if elementos:
-            return elementos
-    except TimeoutException:
-        return None
-
-def encontrar_elemento_shadow_root(driver, host, elemento, timeout):
-    """Espera por um elemento dentro de um shadow-root até que o elemento esteja presente ou o tempo limite seja atingido."""
-    end_time = time() + float(timeout)
-    while True:
-        try:
-            # Tenta encontrar o elemento usando JavaScript
-            js_script = f"""
-            return document.querySelector('{host}').shadowRoot.querySelector('{elemento}');
-            """
-            element = driver.execute_script(js_script)
-            if element:
-                return element
-        except Exception as e:
-            pass  # Ignora erros e tenta novamente até que o tempo limite seja atingido
-        sleep(0.1)  # Espera 1 segundo antes de tentar novamente
-        if time() > end_time:
-            break  # Sai do loop se o tempo limite for atingido
-    return None
-
 def agendar_lancamento(driver, valor_fatura, actions):
     print("AGENDANDO LANÇAMENTO")
     try:
@@ -288,7 +135,6 @@ def agendar_lancamento(driver, valor_fatura, actions):
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('input', {{'bubbles': true}}));", elemento_vencimento)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('change', {{'bubbles': true}}));", elemento_vencimento)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('blur', {{'bubbles': true}}));", elemento_vencimento)
-            print("Vencimento")
             sleep(0.1)
 
             # Previsão
@@ -300,7 +146,6 @@ def agendar_lancamento(driver, valor_fatura, actions):
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('input', {{'bubbles': true}}));", elemento_previsao)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('change', {{'bubbles': true}}));", elemento_previsao)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('blur', {{'bubbles': true}}));", elemento_previsao)
-            print("Previsão")
             sleep(0.1)
 
             # Descrição
@@ -312,7 +157,6 @@ def agendar_lancamento(driver, valor_fatura, actions):
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('input', {{'bubbles': true}}));", elemento_descricao)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('change', {{'bubbles': true}}));", elemento_descricao)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('blur', {{'bubbles': true}}));", elemento_descricao)
-            print("Descricão")
             sleep(0.1)
 
             # Categoria
@@ -328,7 +172,6 @@ def agendar_lancamento(driver, valor_fatura, actions):
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('change', {{'bubbles': true}}));", elemento_categoria)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('blur', {{'bubbles': true}}));", elemento_categoria)
             actions.send_keys(Keys.ENTER).perform()
-            print("Categoria")
             sleep(0.1)
 
             # Valor
@@ -347,7 +190,6 @@ def agendar_lancamento(driver, valor_fatura, actions):
                 sleep(0.1)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('keypress', {{'bubbles': true}}));", elemento_valor)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('keyup', {{'bubbles': true}}));", elemento_valor)
-            print("Valor")
             sleep(0.1)
 
             # Automatizar Cobrança
@@ -469,8 +311,10 @@ def organiza_extratos():
                     cliente = procura_cliente(nome_centro_custo_mod)
                     if cliente:
                         cliente_id = cliente[0]
-                        caminho_pasta_cliente = procura_pasta_cliente(nome_centro_custo_mod)
-                        valores_extrato = procura_valores_com_codigo(cliente_id, cod_centro_custo)
+                        caminho_pasta_cliente = Path(procura_pasta_cliente(nome_centro_custo_mod, lista_dir_clientes, mes, ano))
+                        sub_pasta = Path(f"{caminho_pasta_cliente}\\{mes}-{ano}")
+                        sub_pasta.mkdir(parents=True, exist_ok=True)
+                        valores_extrato = procura_valores_com_codigo(cliente_id, cod_centro_custo, db_conf, mes, ano)
                         if valores_extrato:
                             print("Esses valores de extrato ja foram registrados!\n")
                         else:
@@ -641,7 +485,7 @@ def gera_fatura():
                             cliente = procura_cliente(nome_pasta_cliente)
                             if cliente:
                                 cliente_id = cliente[0]
-                                valores_financeiro = procura_valores(cliente_id)
+                                valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
                                 if valores_financeiro:
                                     caminho_sub_pasta = Path(sub_pasta)
                                     # Variáveis para planilha
@@ -863,7 +707,7 @@ def gera_boleto():
                                 cliente_id = cliente[0]
                                 cliente_cnpj = cliente[2]
                                 cliente_cpf = cliente[3]
-                                valores = procura_valores(cliente_id)
+                                valores = procura_valores(cliente_id, db_conf, mes, ano)
                                 if valores:
                                     valor_fatura = valores[20]
                                     valor_fatura_formatado = f"{valor_fatura:.2f}".replace(".", ",")
@@ -933,7 +777,6 @@ def envia_arquivos():
                     if sub_pasta.__contains__(f"{mes}-{ano}"):
                         arquivos_cliente = listagem_arquivos(sub_pasta)
                         for arquivo in arquivos_cliente:
-                            print(os.path.basename(arquivo.replace("ã", "a").replace("õ", "o")))
                             if arquivo.__contains__("Extrato_Mensal_") and arquivo.__contains__(f"{nome_pasta_cliente}_{mes}.{ano}.pdf"):
                                 extrato = True
                                 anexos.append(arquivo)
@@ -949,12 +792,9 @@ def envia_arquivos():
                                 if cliente:
                                     cliente_id = cliente[0]
                                     cliente_email = cliente[4]
-                                    valores_extrato = procura_valores(cliente_id)
+                                    valores_extrato = procura_valores(cliente_id, db_conf, mes, ano)
                                     if valores_extrato and valores_extrato[21] == 0 and not cliente_email == None:
                                         print(f"Fará o envio para o cliente {nome_pasta_cliente}")
-                                        print(f"{cliente_email}, {email_gestor}")
-                                        print(anexos)
-                                        input()
                                         enviar_email_com_anexos(f"{cliente_email}, {email_gestor}", f"Documentos de Terceirização - {nome_pasta_cliente}", 
                                                                f"{corpo_email}", anexos)
                                         query_atualiza_anexos = ler_sql("sql/atualizar_anexos_cliente.sql")
@@ -975,7 +815,6 @@ def envia_arquivos():
                                 print (error)
                         else:
                             print("Cliente não possui todos os arquivos necessários para o envio!")
-                            input()
     except Exception as error:
         print (error)
 
