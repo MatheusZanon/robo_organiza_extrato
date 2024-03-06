@@ -4,7 +4,7 @@ from components.extract_text_pdf import extract_text_pdf
 from components.importacao_caixa_dialogo import DialogBox
 from components.checar_ativacao_google_drive import checa_google_drive
 from components.configuracao_db import configura_db, ler_sql
-from components.procura_cliente import procura_cliente, procura_pasta_cliente
+from components.procura_cliente import procura_cliente
 from components.procura_valores import procura_valores, procura_valores_com_codigo
 from components.procura_elementos_web import procura_elemento, procura_todos_elementos, encontrar_elemento_shadow_root
 from components.configuracao_selenium_drive import configura_selenium_driver
@@ -39,8 +39,9 @@ db_conf, conn, cursor = configura_db()
 # =============CHECANDO SE O GOOGLE FILE STREAM ESTÁ INICIADO NO SISTEMA==============
 checa_google_drive()
 
-# ================CONFIGURAÇÃO DO SELENIUM CHROME DRIVER=====================
 chrome_options, servico = configura_selenium_driver()
+
+# ================CONFIGURAÇÃO DAS VARIAVEIS DE AMBIENTE=====================
 automacao_email = os.getenv('SELENIUM_USER')
 automacao_senha = os.getenv('SELENIUM_PASSWORD')
 email_gestor = os.getenv('EMAIL_GESTOR')
@@ -308,15 +309,15 @@ def organiza_extratos():
                             nome_centro_custo_mod = partes[1].strip()
                             cod_centro_custo = partes[0].strip()                   
 
-                    cliente = procura_cliente(nome_centro_custo_mod)
+                    cliente = procura_cliente(nome_centro_custo_mod, db_conf)
                     if cliente:
                         cliente_id = cliente[0]
-                        caminho_pasta_cliente = Path(procura_pasta_cliente(nome_centro_custo_mod, lista_dir_clientes, mes, ano))
-                        sub_pasta = Path(f"{caminho_pasta_cliente}\\{mes}-{ano}")
-                        sub_pasta.mkdir(parents=True, exist_ok=True)
+                        caminho_pasta_cliente = Path(procura_pasta_cliente(nome_centro_custo_mod, lista_dir_clientes))
+                        caminho_sub_pasta_cliente = Path(f"{caminho_pasta_cliente}\\{mes}-{ano}")
+                        caminho_sub_pasta_cliente.mkdir(parents=True, exist_ok=True)
                         valores_extrato = procura_valores_com_codigo(cliente_id, cod_centro_custo, db_conf, mes, ano)
                         if valores_extrato:
-                            print("Esses valores de extrato ja foram registrados!\n")
+                            print(f"Esses valores de extrato ja foram registrados para {nome_centro_custo}!\n")
                         else:
                             # CONVÊNIO FÁRMACIA
                             match_convenio_farm = search(r"244CONVÊNIO FARMÁCIA\s*([\d.,]+)", texto_pdf)
@@ -449,7 +450,7 @@ def organiza_extratos():
                                 caminho_pdf_mod = caminho_pdf.rename(novo_nome_extrato)
                             else:
                                 caminho_pdf_mod = caminho_pdf
-                            caminho_destino = Path(caminho_pasta_cliente)
+                            caminho_destino = Path(caminho_sub_pasta_cliente)
                             copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
                     else:
                         print("Cliente não encontrado!\n")
@@ -482,7 +483,7 @@ def gera_fatura():
                             fatura_pronta = False
                             break
                         elif fatura_pronta == False:
-                            cliente = procura_cliente(nome_pasta_cliente)
+                            cliente = procura_cliente(nome_pasta_cliente, db_conf)
                             if cliente:
                                 cliente_id = cliente[0]
                                 valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
@@ -649,8 +650,6 @@ def gera_fatura():
                                                 cursor.execute(query_fatura, (percent_human, eco_mensal, total_fatura, cliente_id, mes, ano))
                                                 conn.commit()
                                         except Exception as error:
-                                            wb.Close()
-                                            wb.Quit()
                                             print(error)
                                     except Exception as error:
                                         print(error)
@@ -702,7 +701,7 @@ def gera_boleto():
                             boleto = False
                             break
                         elif boleto == False:
-                            cliente = procura_cliente(nome_pasta_cliente)
+                            cliente = procura_cliente(nome_pasta_cliente, db_conf)
                             if cliente:
                                 cliente_id = cliente[0]
                                 cliente_cnpj = cliente[2]
@@ -788,7 +787,7 @@ def envia_arquivos():
                                 anexos.append(arquivo)
                         if extrato == True and fatura == True and boleto == True:
                             try:
-                                cliente = procura_cliente(nome_pasta_cliente)
+                                cliente = procura_cliente(nome_pasta_cliente, db_conf)
                                 if cliente:
                                     cliente_id = cliente[0]
                                     cliente_email = cliente[4]

@@ -41,7 +41,7 @@ def listagem_arquivos_downloads():
     except Exception as exc:
         print(f"Ocorreu alguma falha no processo: {exc}")
 
-def procura_pasta_cliente(nome, lista_dir_clientes, mes, ano):
+def procura_pasta_cliente(nome, lista_dir_clientes):
     try:
         nome = nome.replace("S/S", "S S")
         caminho_pasta_cliente = None
