@@ -99,7 +99,7 @@ def pega_valores_vales_reembolsos(cliente_id, centro_custo):
                     reembolso = cursor.fetchone()
                     conn.commit()
                 if reembolso == None:
-                    query_insert_reembolsos = ler_sql('sql/registrar_valores_reembolsos.sql')
+                    query_insert_reembolsos = ler_sql('sql/registra_valores_reembolsos.sql')
                     values_insert = (cliente_id, descricao_reembolsos[i], valores_reembolsos[i], mes, ano)
                     with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
                         cursor.execute(query_insert_reembolsos, values_insert)
@@ -433,7 +433,7 @@ def organiza_extratos():
                             vale_transporte, assinat_eletronica, vale_refeicao, ponto_eletronico, sst = pega_valores_vales_reembolsos(cliente_id, nome_centro_custo_mod.replace("S/S", "S S"))
 
                             # INSERÇÃO DE DADOS NO BANCO
-                            query_insert_valores = ler_sql('sql/registrar_valores_extrato.sql')
+                            query_insert_valores = ler_sql('sql/registra_valores_extrato.sql')
                             values_insert_valores = (cliente_id, cod_centro_custo, convenio_farmacia, adiant_salarial, num_empregados, 
                                                         num_estagiarios, trabalhando, salario_contri_empregados, 
                                                         salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, 
@@ -443,7 +443,6 @@ def organiza_extratos():
                             with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
                                 cursor.execute(query_insert_valores, values_insert_valores)
                                 conn.commit()
-
                             caminho_pdf = Path(extrato)
                             if not nome_extrato.__contains__(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{mes}.{ano}"):
                                 novo_nome_extrato = caminho_pdf.with_name(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S").strip()}_{mes}.{ano}.pdf")
@@ -645,7 +644,7 @@ def gera_fatura():
                                             wb.Close()
                                             excel.Quit()
                                             print("Inserindo valores no banco.")
-                                            query_fatura = ler_sql('sql/registrar_valores_fatura.sql')
+                                            query_fatura = ler_sql('sql/registra_valores_fatura.sql')
                                             with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
                                                 cursor.execute(query_fatura, (percent_human, eco_mensal, total_fatura, cliente_id, mes, ano))
                                                 conn.commit()
@@ -796,7 +795,7 @@ def envia_arquivos():
                                         print(f"Fará o envio para o cliente {nome_pasta_cliente}")
                                         enviar_email_com_anexos(f"{cliente_email}, {email_gestor}", f"Documentos de Terceirização - {nome_pasta_cliente}", 
                                                                f"{corpo_email}", anexos)
-                                        query_atualiza_anexos = ler_sql("sql/atualizar_anexos_cliente.sql")
+                                        query_atualiza_anexos = ler_sql("sql/atualiza_anexos_cliente.sql")
                                         values_anexos = (cliente_id, mes, ano)
                                         with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
                                             cursor.execute(query_atualiza_anexos, values_anexos)
