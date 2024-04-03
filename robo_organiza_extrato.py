@@ -20,6 +20,7 @@ import win32com.client as win32
 from dotenv import load_dotenv
 import os
 from time import sleep, time
+from datetime import date
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -113,7 +114,7 @@ def pega_valores_vales_reembolsos(cliente_id, centro_custo):
 def agendar_lancamento(driver, valor_fatura, actions):
     print("AGENDANDO LANÇAMENTO")
     try:
-        elemento_agenda_lancamento = procura_elemento(driver, "xpath", """//*[@id="EntityDetailsContainer"]/h4[1]/a""", 15)
+        elemento_agenda_lancamento = procura_elemento(driver, "xpath", """//*[@id="EntityDetailsContainer"]/div[1]/div[3]/div[1]/h4/a""", 15)
         if elemento_agenda_lancamento:
             elemento_agenda_lancamento.click()
             if int(mes) == 12:
@@ -125,7 +126,15 @@ def agendar_lancamento(driver, valor_fatura, actions):
                 elif int(mes) > 9:
                     mes_agenda = str(int(mes) + 1)
                 ano_agenda = ano
-            texto_data_lancamento = f"02{mes_agenda}{ano_agenda}"
+            today = date.today()
+            if today.day < 2:
+                texto_data_lancamento = f"02{mes_agenda}{ano_agenda}"
+            elif today.day < 10:
+                texto_data_lancamento = f"0{str(today.day)}{mes_agenda}{ano_agenda}"
+            else:
+                texto_data_lancamento = f"{str(today.day)}{mes_agenda}{ano_agenda}"
+            print(texto_data_lancamento)
+            input()
             sleep(2)
             # Vencimento
             elemento_vencimento = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create >"""+
@@ -438,7 +447,7 @@ def organiza_extratos():
                                                         num_estagiarios, trabalhando, salario_contri_empregados, 
                                                         salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, 
                                                         irrf, liquido_centro_custo, vale_transporte, assinat_eletronica, 
-                                                        vale_refeicao, ponto_eletronico, sst, mes, ano
+                                                        vale_refeicao, ponto_eletronico, sst, mes, ano, 0, 0
                                                         )
                             with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
                                 cursor.execute(query_insert_valores, values_insert_valores)
@@ -622,7 +631,7 @@ def gera_fatura():
                                         # economia mensal
                                         valor1 = round(soma_salarios_provdt * 0.8027, 2)
                                         valor2 = round(soma_salarios_provdt * 0.4287, 2)
-                                        eco_mensal = valor1 - valor2
+                                        eco_mensal = round(valor1 - valor2, 2)
                                         workbook.save(caminho_fatura)
                                         workbook.close()
                                         # valor total da fatura
@@ -710,6 +719,7 @@ def gera_boleto():
                                     valor_fatura = valores[20]
                                     valor_fatura_formatado = f"{valor_fatura:.2f}".replace(".", ",")
                                     print(f"{nome_pasta_cliente} vai precisar de um boleto. Valor da fatura é: {valor_fatura}")
+                                    input()
                                     elemento_search = procura_elemento(driver, "xpath", """//*[@id="entityList_filter"]"""+
                                                                       """/label/input""", 15)   
                                     if elemento_search:                           
