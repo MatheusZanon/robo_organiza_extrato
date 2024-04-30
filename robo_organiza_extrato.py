@@ -31,11 +31,12 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+
 # ================= CARREGANDO VARIÁVEIS DE AMBIENTE======================
 load_dotenv()
 
 # =====================CONFIGURAÇÂO DO BANCO DE DADOS======================
-db_conf, conn, cursor = configura_db()
+db_conf = configura_db()
 
 # =============CHECANDO SE O GOOGLE FILE STREAM ESTÁ INICIADO NO SISTEMA==============
 checa_google_drive()
@@ -127,15 +128,12 @@ def agendar_lancamento(driver, valor_fatura, actions):
                     mes_agenda = str(int(mes) + 1)
                 ano_agenda = ano
             today = date.today()
-            if today.day < 2:
-                texto_data_lancamento = f"02{mes_agenda}{ano_agenda}"
-            elif today.day < 10:
-                texto_data_lancamento = f"0{str(today.day)}{mes_agenda}{ano_agenda}"
-            else:
+            if today.day > 2 and today.day < 5:
                 texto_data_lancamento = f"{str(today.day)}{mes_agenda}{ano_agenda}"
-            print(texto_data_lancamento)
-            input()
+            else:
+                texto_data_lancamento = f"02{mes_agenda}{ano_agenda}"
             sleep(2)
+
             # Vencimento
             elemento_vencimento = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create >"""+
                                                                  """ div > div.modal-body > form > div:nth-child(2) > div:nth-child(2) > form-helper:nth-child(1)"""+
@@ -144,7 +142,6 @@ def agendar_lancamento(driver, valor_fatura, actions):
             driver.execute_script(f"""arguments[0].value='{texto_data_lancamento}'""", elemento_vencimento)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('input', {{'bubbles': true}}));", elemento_vencimento)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('change', {{'bubbles': true}}));", elemento_vencimento)
-            driver.execute_script(f"arguments[0].dispatchEvent(new Event('blur', {{'bubbles': true}}));", elemento_vencimento)
             sleep(0.1)
 
             # Previsão
@@ -155,40 +152,53 @@ def agendar_lancamento(driver, valor_fatura, actions):
             driver.execute_script(f"""arguments[0].value='{texto_data_lancamento}'""", elemento_previsao)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('input', {{'bubbles': true}}));", elemento_previsao)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('change', {{'bubbles': true}}));", elemento_previsao)
-            driver.execute_script(f"arguments[0].dispatchEvent(new Event('blur', {{'bubbles': true}}));", elemento_previsao)
-            sleep(0.1)
+            sleep(0.5)
+            actions.send_keys(Keys.ESCAPE).perform()
+            sleep(0.5)
 
             # Descrição
             elemento_descricao = encontrar_elemento_shadow_root(driver, "#app", "#description", 2)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('focus', {{'bubbles': true}}));", elemento_descricao)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('click', {{'bubbles': true}}));", elemento_descricao)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('select', {{'bubbles': true}}));", elemento_descricao)
             driver.execute_script("""arguments[0].value='Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, """+
                                   f"""vale transporte e taxa de administração de pessoas {mes}/{ano}'""", elemento_descricao)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('input', {{'bubbles': true}}));", elemento_descricao)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('change', {{'bubbles': true}}));", elemento_descricao)
-            driver.execute_script(f"arguments[0].dispatchEvent(new Event('blur', {{'bubbles': true}}));", elemento_descricao)
+            sleep(0.1)
+            actions.send_keys(Keys.TAB).perform()
+            actions.send_keys(Keys.TAB).perform()
+            actions.send_keys(Keys.TAB).perform()
             sleep(0.1)
 
             # Categoria
-            elemento_categoria = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create """+
-                                                                """> div > div.modal-body > form > div:nth-child(2) > div.row.mt-3 > app-schedule-category > """+
-                                                                """fieldset > div.ng-untouched.ng-valid.ng-dirty > div > app-schedule-category-item > div > """+
-                                                                """form-helper.col-4 > div:nth-child(1) > div > app-category-select > ng-select > div > div > """+
-                                                                """div.ng-input > input[type=text]""", 2)
+            elemento_categoria = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create > div > div.modal-body > """+ 
+                                                                """form > div:nth-child(2) > div.row.mt-3 > app-schedule-category > fieldset > div.ng-untouched.ng-invalid """+
+                                                                """> div > app-schedule-category-item > div > form-helper.col-4 > div:nth-child(1) > div > app-category-select > ng-select """+
+                                                                """> div > div > div.ng-input > input[type=text]""", 2)
+            if elemento_categoria == None:
+                elemento_categoria = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create > div > div.modal-body > """+ 
+                                                                """form > div:nth-child(2) > div.row.mt-3 > app-schedule-category > fieldset > div.ng-untouched.ng-valid.ng-dirty """+
+                                                                """> div > app-schedule-category-item > div > form-helper.col-4 > div:nth-child(1) > div > app-category-select > ng-select """+
+                                                                """> div > div > div.ng-input > input[type=text]""", 2)
+            driver.execute_script(f"arguments[0].dispatchEvent(new Event('focus', {{'bubbles': true}}));", elemento_categoria)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('click', {{'bubbles': true}}));", elemento_categoria)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('select', {{'bubbles': true}}));", elemento_categoria)
-            driver.execute_script(f"""arguments[0].value='Gestão de Mão de Obra Terceirizada'""", elemento_categoria)
+            driver.execute_script("""arguments[0].value='Gestão de Mão de Obra Terceirizada'""", elemento_categoria)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('input', {{'bubbles': true}}));", elemento_categoria)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('change', {{'bubbles': true}}));", elemento_categoria)
-            driver.execute_script(f"arguments[0].dispatchEvent(new Event('blur', {{'bubbles': true}}));", elemento_categoria)
-            actions.send_keys(Keys.ENTER).perform()
             sleep(0.1)
+            actions.send_keys(Keys.ENTER).perform()
+            sleep(0.5)
 
             # Valor
             elemento_valor = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create """+
-                                                            """> div > div.modal-body > form > div:nth-child(2) > div.row.mt-3 > app-schedule-category """+
-                                                            """> fieldset > div.ng-untouched.ng-valid.ng-dirty > div > app-schedule-category-item > div > """+
-                                                            """div > form-helper > div:nth-child(1) > div > input""", 2)
+                                                            """> div > div.modal-body > form > div:nth-child(2) > div.row.mt-3 > app-schedule-category > fieldset > """+
+                                                            """div.ng-untouched.ng-invalid.ng-dirty > div > app-schedule-category-item > div > div > form-helper > div:nth-child(1) > div > input""", 2)
+            if elemento_valor == None:
+                elemento_valor = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create """+
+                                                            """> div > div.modal-body > form > div:nth-child(2) > div.row.mt-3 > app-schedule-category > fieldset > """+
+                                                            """div.ng-untouched.ng-valid.ng-dirty > div > app-schedule-category-item > div > div > form-helper > div:nth-child(1) > div > input""", 2)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('click', {{'bubbles': true}}));", elemento_valor)
             driver.execute_script(f"arguments[0].dispatchEvent(new Event('select', {{'bubbles': true}}));", elemento_valor)
             sleep(0.1)
@@ -216,7 +226,7 @@ def agendar_lancamento(driver, valor_fatura, actions):
 
             elemento_agendar = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-create > div > """+
                                                                """div.modal-footer.justify-content-between > div.d-flex.align-items-center.form-check-inline > button""", 10)
-            driver.execute_script("""return arguments[0].click();""", elemento_agendar)
+            driver.execute_script("""arguments[0].click();""", elemento_agendar)
 
             sleep(2)
             driver.refresh()
@@ -264,13 +274,11 @@ def baixar_boleto_lancamento(driver, valor_fatura, elemento_search, actions):
                     achou_lancamento = False   
             if achou_lancamento == False:
                 print("Lançamento do mês não encontrado, fazendo novo agendamento...")
-                input()
                 agendar_lancamento(driver, valor_fatura, actions)
                 baixar_boleto_lancamento(driver, valor_fatura, elemento_search, actions)
         else:
             elemento_search.clear()
             print("Nenhum lançamento encontrado!")
-            input()
     except Exception as error:
         print(f"Deu algum erro ao tentar baixar o boleto: {error}")
 
@@ -328,6 +336,7 @@ def organiza_extratos():
                         if valores_extrato:
                             print(f"Esses valores de extrato ja foram registrados para {nome_centro_custo}!\n")
                         else:
+                            print(f"Registrando novos valores para {nome_centro_custo}\n")
                             # CONVÊNIO FÁRMACIA
                             match_convenio_farm = search(r"244CONVÊNIO FARMÁCIA\s*([\d.,]+)", texto_pdf)
                             if match_convenio_farm:
@@ -440,8 +449,8 @@ def organiza_extratos():
                                 liquido_centro_custo = 0
 
                             vale_transporte, assinat_eletronica, vale_refeicao, ponto_eletronico, sst = pega_valores_vales_reembolsos(cliente_id, nome_centro_custo_mod.replace("S/S", "S S"))
-
                             # INSERÇÃO DE DADOS NO BANCO
+
                             query_insert_valores = ler_sql('sql/registra_valores_extrato.sql')
                             values_insert_valores = (cliente_id, cod_centro_custo, convenio_farmacia, adiant_salarial, num_empregados, 
                                                         num_estagiarios, trabalhando, salario_contri_empregados, 
@@ -461,7 +470,7 @@ def organiza_extratos():
                             caminho_destino = Path(caminho_sub_pasta_cliente)
                             copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
                     else:
-                        print("Cliente não encontrado!\n")
+                        print(f"Cliente não encontrado {nome_centro_custo}\n")
 
     except Exception as error:
         if error.args == ("'NoneType' object is not iterable",):
@@ -632,6 +641,7 @@ def gera_fatura():
                                         valor1 = round(soma_salarios_provdt * 0.8027, 2)
                                         valor2 = round(soma_salarios_provdt * 0.4287, 2)
                                         eco_mensal = round(valor1 - valor2, 2)
+                                        eco_liquida = round(eco_mensal - percent_human, 2)
                                         workbook.save(caminho_fatura)
                                         workbook.close()
                                         # valor total da fatura
@@ -655,7 +665,7 @@ def gera_fatura():
                                             print("Inserindo valores no banco.")
                                             query_fatura = ler_sql('sql/registra_valores_fatura.sql')
                                             with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                                                cursor.execute(query_fatura, (percent_human, eco_mensal, total_fatura, cliente_id, mes, ano))
+                                                cursor.execute(query_fatura, (percent_human, eco_mensal, eco_liquida, total_fatura, cliente_id, mes, ano))
                                                 conn.commit()
                                         except Exception as error:
                                             print(error)
@@ -719,13 +729,12 @@ def gera_boleto():
                                     valor_fatura = valores[20]
                                     valor_fatura_formatado = f"{valor_fatura:.2f}".replace(".", ",")
                                     print(f"{nome_pasta_cliente} vai precisar de um boleto. Valor da fatura é: {valor_fatura}")
-                                    input()
                                     elemento_search = procura_elemento(driver, "xpath", """//*[@id="entityList_filter"]"""+
-                                                                      """/label/input""", 15)   
-                                    if elemento_search:                           
-                                        if not cliente_cnpj == '' or not cliente_cnpj == None:
+                                                                      """/label/input""", 15)  
+                                    if elemento_search:    
+                                        if not cliente_cnpj == '' and not cliente_cnpj == None:        
                                             elemento_search.send_keys(cliente_cnpj)
-                                        elif not cliente_cpf == '' or not cliente_cpf == None:
+                                        elif not cliente_cpf == '' and not cliente_cpf == None:
                                             elemento_search.send_keys(cliente_cpf)                       
                                     sleep(2)
                                     try:
@@ -735,7 +744,7 @@ def gera_boleto():
                                         elemento_lista_clientes = procura_todos_elementos(driver, "xpath", """//*[@id="entityList"]"""+
                                                                     """/tbody/tr[*]/td[1]/a""" , 15)
                                     for cliente_lista in elemento_lista_clientes:
-                                        if cliente_lista.text.__contains__(cliente_cnpj) or cliente_lista.text.__contains__(cliente_cpf):
+                                        if cliente_lista.text.__contains__(str(cliente_cnpj)) or cliente_lista.text.__contains__(str(cliente_cpf)):
                                             cliente_lista.click()
                                             sleep(1)
                                             try:
@@ -772,6 +781,7 @@ def gera_boleto():
 
 def envia_arquivos():
     try:  
+        input("APERTE QUALQUER TECLA PARA ENVIAR OS ARQUIVOS")
         for diretorio in lista_dir_clientes:
             pastas_regioes = listagem_pastas(diretorio)
             for pasta_cliente in pastas_regioes:
