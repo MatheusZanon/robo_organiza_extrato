@@ -338,24 +338,27 @@ def organiza_extratos():
                         else:
                             print(f"Registrando novos valores para {nome_centro_custo}\n")
                             # CONVÊNIO FÁRMACIA
-                            match_convenio_farm = search(r"244CONVÊNIO FARMÁCIA\s*([\d.,]+)", texto_pdf)
+                            match_convenio_farm = search(r"\d{3}\s*CONV[EÊ]NIO\s+FARM[AÁ]CIA\s*([\d.,]+)", texto_pdf)
                             if match_convenio_farm:
                                 convenio_farmacia = float(match_convenio_farm.group(1).replace(".", "").replace(",", "."))
                             else:
                                 convenio_farmacia = 0
+                            print(f"Convenio Farmacia: {convenio_farmacia}")
 
                             # DESCONTO ADIANTAMENTO SALARIAL
-                            match_adiant_salarial = search(r"981DESCONTO ADIANTAMENTO SALARIAL\s*([\d.,]+)", texto_pdf)
+                            match_adiant_salarial = search(r"\d{3}\s*DESCONTO ADIANTAMENTO SALARIAL\s*([\d.,]+)", texto_pdf)
                             if match_adiant_salarial:
                                 adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
                             else: 
                                 adiant_salarial = 0
                             if adiant_salarial == 0:
-                                match_adiant_salarial = search(r"981DESC.ADIANT.SALARIAL\s*([\d.,]+)", texto_pdf)
+                                match_adiant_salarial = search(r"\d{3}\s*DESC.ADIANT.SALARIAL\s*([\d.,]+)", texto_pdf)
                                 if match_adiant_salarial:
                                     adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
                                 else: 
                                     adiant_salarial = 0
+                            print(f"Adiantamento Salarial: {adiant_salarial}")
+                            input('Pressione Enter para continuar...')
 
                             # NUMERO DE EMPREGADOS
                             match_demitido = search(r"No. Empregados: Demitido:\s*(\d+)", texto_pdf)
@@ -480,6 +483,7 @@ def organiza_extratos():
 
 def gera_fatura():
     try:
+        input("Pressione ENTER para iniciar o processo de geração da fatura...")
         for diretorio in lista_dir_clientes:
             pastas_regioes = listagem_pastas(diretorio)
             for pasta_cliente in pastas_regioes:
@@ -729,6 +733,7 @@ def gera_boleto():
                                     valor_fatura = valores[20]
                                     valor_fatura_formatado = f"{valor_fatura:.2f}".replace(".", ",")
                                     print(f"{nome_pasta_cliente} vai precisar de um boleto. Valor da fatura é: {valor_fatura}")
+                                    input("Pressione Enter para prosseguir...") 
                                     elemento_search = procura_elemento(driver, "xpath", """//*[@id="entityList_filter"]"""+
                                                                       """/label/input""", 15)  
                                     if elemento_search:    
