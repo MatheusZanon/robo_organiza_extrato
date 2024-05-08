@@ -22,6 +22,8 @@ import os
 from time import sleep, time
 from datetime import date
 import pandas as pd
+from flask import Flask, request
+from flask_restful import Resource, Api, reqparse
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
@@ -49,28 +51,9 @@ automacao_senha = os.getenv('SELENIUM_PASSWORD')
 email_gestor = os.getenv('EMAIL_GESTOR')
 corpo_email = os.getenv('CORPO_EMAIL')
 
-# ==================CAIXA DE DIALOGO INICIAL============================
-def main():
-    root = tk.Tk()
-    app = DialogBox(root)
-    root.mainloop()
-    return app.particao, app.rotina, app.mes, app.ano
-
-if __name__ == "__main__":
-    particao, rotina, mes, ano = main()
-
-
-# ========================PARAMETROS INICIAS==============================
-dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
-dir_clientes_manaus = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Manaus"
-lista_dir_clientes = [dir_clientes_itaperuna, dir_clientes_manaus]
-dir_extratos = f"{particao}:\\Meu Drive\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{mes}_{ano}"
-modelo_fatura = Path(f"{particao}:\\Meu Drive\\Arquivos_Automacao\\Fatura_Detalhada_Modelo_00.0000_python.xlsx")
-planilha_vales_sst = Path(f"{particao}:\\Meu Drive\\Relatorio_Vales_Saude_Seguranca\\{mes}-{ano}\\Relatorio_Vales_Saude_Seguranca_{mes}.{ano}.xlsx")
-planilha_reembolsos = Path(f"{particao}:\\Meu Drive\\Relatorio_Boletos_Salario_Reembolso\\{mes}-{ano}\\Relatorio_Boletos_Salario_Reembolso.xlsx")
 
 # ==================== MÉTODOS DE AUXÍLIO====================================
-def pega_valores_vales_reembolsos(cliente_id, centro_custo):
+def pega_valores_vales_reembolsos(mes, ano, cliente_id, centro_custo, planilha_vales_sst, planilha_reembolsos):
     try:
         df_vales_sst = pd.read_excel(planilha_vales_sst, usecols='C:H', skiprows=1)
         vales = df_vales_sst.loc[df_vales_sst['CLIENTE'] == centro_custo, ['Vale Transporte', 'Assinatura Eletronica', 'Vale Refeição', 'Ponto Eletrônico', 'Saúde/Segurança do Trabalho']]
@@ -112,7 +95,7 @@ def pega_valores_vales_reembolsos(cliente_id, centro_custo):
     except Exception as error:
         print(error)
 
-def agendar_lancamento(driver, valor_fatura, actions):
+def agendar_lancamento(mes, ano, driver, valor_fatura, actions):
     print("AGENDANDO LANÇAMENTO")
     try:
         elemento_agenda_lancamento = procura_elemento(driver, "xpath", """//*[@id="EntityDetailsContainer"]/div[1]/div[3]/div[1]/h4/a""", 15)
@@ -233,7 +216,7 @@ def agendar_lancamento(driver, valor_fatura, actions):
     except Exception as error:
         print(error)
 
-def baixar_boleto_lancamento(driver, valor_fatura, elemento_search, actions):
+def baixar_boleto_lancamento(mes, ano, driver, valor_fatura, elemento_search, actions):
     print("BAIXANDO BOLETO")
     achou_lancamento = False
     try:
@@ -274,8 +257,8 @@ def baixar_boleto_lancamento(driver, valor_fatura, elemento_search, actions):
                     achou_lancamento = False   
             if achou_lancamento == False:
                 print("Lançamento do mês não encontrado, fazendo novo agendamento...")
-                agendar_lancamento(driver, valor_fatura, actions)
-                baixar_boleto_lancamento(driver, valor_fatura, elemento_search, actions)
+                agendar_lancamento(mes, ano, driver, valor_fatura, actions)
+                baixar_boleto_lancamento(mes, ano, driver, valor_fatura, elemento_search, actions)
         else:
             elemento_search.clear()
             print("Nenhum lançamento encontrado!")
@@ -307,7 +290,7 @@ def start_chrome():
         start_chrome()
 
 # ==================== MÉTODOS DE CADA ETAPA DO PROCESSO=======================
-def organiza_extratos():
+def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales_sst, planilha_reembolsos):
     try:
         pasta_faturas = listagem_pastas(dir_extratos)
         for pasta in pasta_faturas:
@@ -451,7 +434,9 @@ def organiza_extratos():
                             else:
                                 liquido_centro_custo = 0
 
-                            vale_transporte, assinat_eletronica, vale_refeicao, ponto_eletronico, sst = pega_valores_vales_reembolsos(cliente_id, nome_centro_custo_mod.replace("S/S", "S S"))
+                            vale_transporte, assinat_eletronica, vale_refeicao, ponto_eletronico, sst = pega_valores_vales_reembolsos(mes, ano, 
+                                                                                                        cliente_id, nome_centro_custo_mod.replace("S/S", "S S"), 
+                                                                                                        planilha_vales_sst, planilha_reembolsos)
                             # INSERÇÃO DE DADOS NO BANCO
 
                             query_insert_valores = ler_sql('sql/registra_valores_extrato.sql')
@@ -481,7 +466,7 @@ def organiza_extratos():
         else:
             print(f"O sistema retornou um erro: {error}")
 
-def gera_fatura():
+def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
     try:
         input("Pressione ENTER para iniciar o processo de geração da fatura...")
         for diretorio in lista_dir_clientes:
@@ -682,7 +667,7 @@ def gera_fatura():
     except Exception as error:
         return (error)
 
-def gera_boleto(): 
+def gera_boleto(mes, ano, lista_dir_clientes): 
     try:
         actions, driver = start_chrome()
         sleep(1)
@@ -756,11 +741,11 @@ def gera_boleto():
                                                 sleep(0.7)
                                                 elemento_sem_lancamento = procura_elemento(driver, "class_name", """generic-list-no-content""", 4)
                                                 if elemento_sem_lancamento:
-                                                    agendar_lancamento(driver, valor_fatura_formatado, actions)
+                                                    agendar_lancamento(mes, ano, driver, valor_fatura_formatado, actions)
                                                     sleep(1.5)
-                                                    baixar_boleto_lancamento(driver, valor_fatura_formatado, elemento_search, actions)
+                                                    baixar_boleto_lancamento(mes, ano, driver, valor_fatura_formatado, elemento_search, actions)
                                                 elif elemento_sem_lancamento == None:
-                                                    baixar_boleto_lancamento(driver, valor_fatura_formatado, elemento_search, actions)                                                   
+                                                    baixar_boleto_lancamento(mes, ano, driver, valor_fatura_formatado, elemento_search, actions)                                                   
                                                 sleep(4)
                                                 arquivos_downloads = listagem_arquivos_downloads()
                                                 arquivo_mais_recente = max(arquivos_downloads, key=os.path.getmtime)
@@ -784,7 +769,7 @@ def gera_boleto():
     print("PROCESSO DE BOLETO ENCERRADO!")
     driver.quit() 
 
-def envia_arquivos():
+def envia_arquivos(mes, ano, lista_dir_clientes):
     try:  
         input("APERTE QUALQUER TECLA PARA ENVIAR OS ARQUIVOS")
         for diretorio in lista_dir_clientes:
@@ -841,20 +826,69 @@ def envia_arquivos():
     except Exception as error:
         print (error)
 
-# ========================LÓGICA DE EXECUÇÃO DO ROBÔ===========================
-if rotina == "1. Organizar Extratos":
-    organiza_extratos()
-    gera_fatura()
-    gera_boleto()
-    envia_arquivos()
-elif rotina == "2. Gerar Fatura Detalhada":
-    gera_fatura()
-    gera_boleto()
-    envia_arquivos()
-elif rotina == "3. Gerar Boletos":
-    gera_boleto()
-    envia_arquivos()
-elif rotina == "4. Enviar Arquivos":
-    envia_arquivos()
-else:
-    print("Nenhuma rotina selecionada, encerrando o robô...")
+# ==================CAIXA DE DIALOGO INICIAL============================
+app = Flask(__name__)
+api = Api(app)
+
+class execute(Resource):
+    def post(self):
+        print("Requisição Recebida!")
+        parser = reqparse.RequestParser()
+        parser.add_argument('mes', type=int, required=True)
+        parser.add_argument('ano', type=int, required=True)
+        parser.add_argument('particao', required=True)
+        parser.add_argument('rotina', required=True)
+        json = parser.parse_args()
+
+        mes = json['mes']
+        ano = json['ano']
+        particao = json['particao']
+        rotina = json['rotina']
+
+        # ========================PARAMETROS INICIAS==============================
+        dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
+        dir_clientes_manaus = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Manaus"
+        lista_dir_clientes = [dir_clientes_itaperuna, dir_clientes_manaus]
+        dir_extratos = f"{particao}:\\Meu Drive\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{mes}_{ano}"
+        modelo_fatura = Path(f"{particao}:\\Meu Drive\\Arquivos_Automacao\\Fatura_Detalhada_Modelo_00.0000_python.xlsx")
+        planilha_vales_sst = Path(f"{particao}:\\Meu Drive\\Relatorio_Vales_Saude_Seguranca\\{mes}-{ano}\\Relatorio_Vales_Saude_Seguranca_{mes}.{ano}.xlsx")
+        planilha_reembolsos = Path(f"{particao}:\\Meu Drive\\Relatorio_Boletos_Salario_Reembolso\\{mes}-{ano}\\Relatorio_Boletos_Salario_Reembolso.xlsx")
+        sucesso = False
+
+        # ========================LÓGICA DE EXECUÇÃO DO ROBÔ===========================
+        if rotina == "1. Organizar Extratos":
+            organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales_sst, planilha_reembolsos)
+            gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura)
+            gera_boleto(mes, ano, lista_dir_clientes)
+            envia_arquivos(mes, ano, lista_dir_clientes)
+            sucesso = True
+        elif rotina == "2. Gerar Fatura Detalhada":
+            gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura)
+            gera_boleto(mes, ano, lista_dir_clientes)
+            envia_arquivos(mes, ano, lista_dir_clientes)
+            sucesso = True
+        elif rotina == "3. Gerar Boletos":
+            gera_boleto(mes, ano, lista_dir_clientes)
+            envia_arquivos(mes, ano, lista_dir_clientes)
+            sucesso = True
+        elif rotina == "4. Enviar Arquivos":
+            envia_arquivos(mes, ano)
+            sucesso = True
+        else:
+            print("Nenhuma rotina selecionada, encerrando o robô...")
+            sucesso = False
+        
+        if sucesso:
+            return {'message': 'Arquivos de Terceirização gerados com sucesso'}, 200
+        else:
+            return {'message': 'Erro ao gerar arquivos'}, 500
+
+class shutdown(Resource):
+    def post(self):
+        os._exit(0)
+    
+api.add_resource(execute, '/')
+api.add_resource(shutdown, '/shutdown')
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)

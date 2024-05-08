@@ -9,3 +9,11 @@ pdfquery
 mysql-connector-python
 selenium
 python-dotenv
+
+Flask
+Flask-Cors
+Flask-RESTful
+Flask-SQLAlchemy
+Flask-Login
+Flask-Bcrypt
+Flask-Wtf
