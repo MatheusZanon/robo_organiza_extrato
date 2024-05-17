@@ -885,7 +885,10 @@ class execute(Resource):
 
 class shutdown(Resource):
     def post(self):
-        os._exit(0)
+        try:
+            os._exit(0)
+        except Exception as e:
+            print(f'Erro ao executar o comando de shutdown: {e}')   
     
 api.add_resource(execute, '/')
 api.add_resource(shutdown, '/shutdown')
