@@ -310,7 +310,7 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
                             cod_centro_custo = partes[0].strip()                   
 
                     cliente = procura_cliente(nome_centro_custo_mod, db_conf)
-                    if cliente:
+                    if cliente and cliente[7] == True:
                         cliente_id = cliente[0]
                         caminho_pasta_cliente = Path(procura_pasta_cliente(nome_centro_custo_mod, lista_dir_clientes))
                         caminho_sub_pasta_cliente = Path(f"{caminho_pasta_cliente}\\{mes}-{ano}")
@@ -458,7 +458,7 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
                             caminho_destino = Path(caminho_sub_pasta_cliente)
                             copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
                     else:
-                        print(f"Cliente não encontrado {nome_centro_custo}\n")
+                        print(f"Cliente não encontrado ou inativo: {nome_centro_custo}\n")
 
     except Exception as error:
         if error.args == ("'NoneType' object is not iterable",):
@@ -490,7 +490,7 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                             break
                         elif fatura_pronta == False:
                             cliente = procura_cliente(nome_pasta_cliente, db_conf)
-                            if cliente:
+                            if cliente and cliente[7] == True:
                                 cliente_id = cliente[0]
                                 valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
                                 if valores_financeiro:
@@ -663,7 +663,7 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                                 else: 
                                     print("Cliente não possue valores para gerar fatura!")
                             else:
-                                print("Cliente não encontrado!")
+                                print("Cliente não encontrado ou inativo!")
     except Exception as error:
         return (error)
 
@@ -709,7 +709,7 @@ def gera_boleto(mes, ano, lista_dir_clientes):
                             break
                         elif boleto == False:
                             cliente = procura_cliente(nome_pasta_cliente, db_conf)
-                            if cliente:
+                            if cliente and cliente[7] == True:
                                 cliente_id = cliente[0]
                                 cliente_cnpj = cliente[2]
                                 cliente_cpf = cliente[3]
@@ -763,7 +763,7 @@ def gera_boleto(mes, ano, lista_dir_clientes):
                                 else:
                                     print(f"Valores de financeiro não encontrados para {nome_pasta_cliente}")
                             else:
-                                print(f"Cliente {nome_pasta_cliente} não encontrado!")                    
+                                print(f"Cliente {nome_pasta_cliente} não encontrado ou inativo!")                    
     except Exception as error:
         print(error)
     print("PROCESSO DE BOLETO ENCERRADO!")
@@ -797,7 +797,7 @@ def envia_arquivos(mes, ano, lista_dir_clientes):
                         if extrato == True and fatura == True and boleto == True:
                             try:
                                 cliente = procura_cliente(nome_pasta_cliente, db_conf)
-                                if cliente:
+                                if cliente and cliente[7] == True:
                                     cliente_id = cliente[0]
                                     cliente_email = cliente[4]
                                     valores_extrato = procura_valores(cliente_id, db_conf, mes, ano)
@@ -818,7 +818,7 @@ def envia_arquivos(mes, ano, lista_dir_clientes):
                                     elif cliente_email == None:
                                         print("Cliente sem email!")
                                 else:
-                                    print("Cliente não encontrado!")
+                                    print("Cliente não encontrado ou inativo!")
                             except Exception as error:
                                 print (error)
                         else:
@@ -845,14 +845,17 @@ class execute(Resource):
         particao = json['particao']
         rotina = json['rotina']
 
+        if mes < 10:
+            mes = f"0{mes}"
+
         # ========================PARAMETROS INICIAS==============================
-        dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
-        dir_clientes_manaus = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Manaus"
+        dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
+        dir_clientes_manaus = f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\Cobranca_Clientes_terceirizacao\\Clientes Manaus"
         lista_dir_clientes = [dir_clientes_itaperuna, dir_clientes_manaus]
-        dir_extratos = f"{particao}:\\Meu Drive\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{mes}_{ano}"
-        modelo_fatura = Path(f"{particao}:\\Meu Drive\\Arquivos_Automacao\\Fatura_Detalhada_Modelo_00.0000_python.xlsx")
-        planilha_vales_sst = Path(f"{particao}:\\Meu Drive\\Relatorio_Vales_Saude_Seguranca\\{mes}-{ano}\\Relatorio_Vales_Saude_Seguranca_{mes}.{ano}.xlsx")
-        planilha_reembolsos = Path(f"{particao}:\\Meu Drive\\Relatorio_Boletos_Salario_Reembolso\\{mes}-{ano}\\Relatorio_Boletos_Salario_Reembolso.xlsx")
+        dir_extratos = f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{mes}_{ano}"
+        modelo_fatura = Path(f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\Fatura_Detalhada_Modelo_00.0000_python.xlsx")
+        planilha_vales_sst = Path(f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\Relatorio_Vales_Saude_Seguranca\\{mes}-{ano}\\Relatorio_Vales_Saude_Seguranca_{mes}.{ano}.xlsx")
+        planilha_reembolsos = Path(f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\Relatorio_Boletos_Salario_Reembolso\\{mes}-{ano}\\Relatorio_Boletos_Salario_Reembolso.xlsx")
         sucesso = False
 
         # ========================LÓGICA DE EXECUÇÃO DO ROBÔ===========================
@@ -873,6 +876,10 @@ class execute(Resource):
             sucesso = True
         elif rotina == "4. Enviar Arquivos":
             envia_arquivos(mes, ano)
+            sucesso = True
+        elif rotina == "5. Refazer Processo":
+            print(request.data)
+            input()
             sucesso = True
         else:
             print("Nenhuma rotina selecionada, encerrando o robô...")

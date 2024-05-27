@@ -5,5 +5,6 @@ cnpj,
 cpf, 
 email, 
 telefone_celular, 
-regiao  
+regiao,
+is_active  
 FROM clientes_financeiro WHERE nome_razao_social = %s
