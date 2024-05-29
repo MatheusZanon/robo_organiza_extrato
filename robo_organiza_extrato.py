@@ -19,6 +19,7 @@ from openpyxl.styles import Border, Side, NamedStyle
 import win32com.client as win32
 from dotenv import load_dotenv
 import os
+import pythoncom
 from time import sleep, time
 from datetime import date
 import pandas as pd
@@ -247,8 +248,8 @@ def baixar_boleto_lancamento(mes, ano, driver, valor_fatura, elemento_search, ac
                         else:
                             indice += 1
                     sleep(1.5)
-                    elemento_fechar = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-details """+
-                                                                    """> div > modal-header > div > button""", 10)
+                    elemento_fechar = encontrar_elemento_shadow_root(driver, "#app", """div > ngb-modal-window > div > div > app-receivement-schedule-details > div >"""+ 
+                                                                    """nb-modal-header > div.modal-header-end > button.btn.btn-close.ng-star-inserted""", 10)
                     driver.execute_script("""return arguments[0].click();""", elemento_fechar)
                     sleep(0.5)
                     elemento_search.clear()
@@ -313,7 +314,7 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
                     if cliente:
                         cliente_id = cliente[0]
                         caminho_pasta_cliente = Path(procura_pasta_cliente(nome_centro_custo_mod, lista_dir_clientes))
-                        caminho_sub_pasta_cliente = Path(f"{caminho_pasta_cliente}\\{mes}-{ano}")
+                        caminho_sub_pasta_cliente = Path(f"{caminho_pasta_cliente}\\{ano}-{mes}")
                         caminho_sub_pasta_cliente.mkdir(parents=True, exist_ok=True)
                         valores_extrato = procura_valores_com_codigo(cliente_id, cod_centro_custo, db_conf, mes, ano)
                         if valores_extrato:
@@ -450,8 +451,8 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
                                 cursor.execute(query_insert_valores, values_insert_valores)
                                 conn.commit()
                             caminho_pdf = Path(extrato)
-                            if not nome_extrato.__contains__(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{mes}.{ano}"):
-                                novo_nome_extrato = caminho_pdf.with_name(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S").strip()}_{mes}.{ano}.pdf")
+                            if not nome_extrato.__contains__(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{ano}.{mes}"):
+                                novo_nome_extrato = caminho_pdf.with_name(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S").strip()}_{ano}.{mes}.pdf")
                                 caminho_pdf_mod = caminho_pdf.rename(novo_nome_extrato)
                             else:
                                 caminho_pdf_mod = caminho_pdf
@@ -469,13 +470,14 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
 def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
     try:
         input("Pressione ENTER para iniciar o processo de geração da fatura...")
+        pythoncom.CoInitialize()
         for diretorio in lista_dir_clientes:
             pastas_regioes = listagem_pastas(diretorio)
             for pasta_cliente in pastas_regioes:
                 nome_pasta_cliente = pega_nome(pasta_cliente)
                 sub_pastas_cliente = listagem_pastas(pasta_cliente)
                 for sub_pasta in sub_pastas_cliente:
-                    if sub_pasta.__contains__(f"{mes}-{ano}"):
+                    if sub_pasta.__contains__(f"{ano}-{mes}"):
                         arquivos_cliente = listagem_arquivos(sub_pasta)
                         for arquivo in arquivos_cliente:
                             if (arquivo.__contains__("Fatura_Detalhada_") 
@@ -496,7 +498,7 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                                 if valores_financeiro:
                                     caminho_sub_pasta = Path(sub_pasta)
                                     # Variáveis para planilha
-                                    nome_fatura = f"Fatura_Detalhada_{nome_pasta_cliente}_{mes}.{ano}.xlsx"
+                                    nome_fatura = f"Fatura_Detalhada_{nome_pasta_cliente}_{ano}.{mes}.xlsx"
                                     caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"             
                                     # COPIANDO A FATURA MODELO PARA A PASTA DO CLIENTE
                                     copy(modelo_fatura, caminho_sub_pasta / nome_fatura)              
@@ -509,7 +511,7 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                                         # Adicionar o estilo ao workbook (necessário apenas uma vez)
                                         workbook.add_named_style(style_moeda)
                                         # nome da planilha (em baixo)
-                                        sheet.title = f"{mes}.{ano}"
+                                        sheet.title = f"{ano}.{mes}"
                                         # titulo da fatura
                                         sheet['D2'] = f"Fatura Detalhada - {nome_pasta_cliente}"
                                         # convênio farmácia
@@ -531,19 +533,19 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                                         else:
                                             sheet['J6'] = valores_financeiro[3] + valores_financeiro[4]
                                         # salários a pagar
-                                        sheet['A7'] = f"Salários a pagar {mes}.{ano}"
+                                        sheet['A7'] = f"Salários a pagar {ano}.{mes}"
                                         sheet['J7'] = valores_financeiro[12]
                                         salarios_pagar = valores_financeiro[12]
                                         # inss
-                                        sheet['A8'] = f"GPS (Guia da Previdência Social) {mes}.{ano}"
+                                        sheet['A8'] = f"GPS (Guia da Previdência Social) {ano}.{mes}"
                                         sheet['J8'] = valores_financeiro[9]
                                         inss = valores_financeiro[9]
                                         # fgts
-                                        sheet['A9'] = f"FGTS (Fundo de Garantia por Tempo de Serviço) {mes}.{ano}"
+                                        sheet['A9'] = f"FGTS (Fundo de Garantia por Tempo de Serviço) {ano}.{mes}"
                                         sheet['J9'] = valores_financeiro[10]
                                         fgts = valores_financeiro[10]
                                         # provisão de direitos trabalhistas
-                                        sheet['A11'] = f"Provisão de Direitos Trabalhistas {mes}.{ano}"
+                                        sheet['A11'] = f"Provisão de Direitos Trabalhistas {ano}.{mes}"
                                         sheet['E11'] = valores_financeiro[8]
                                         soma_salarios_provdt = valores_financeiro[8]
                                         # irrf (folha de pagamento)
@@ -646,9 +648,9 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                                             excel = win32.gencache.EnsureDispatch('Excel.Application')
                                             excel.Visible = True
                                             wb = excel.Workbooks.Open(caminho_fatura)
-                                            ws = wb.Worksheets[f"{mes}.{ano}"]
+                                            ws = wb.Worksheets[f"{ano}.{mes}"]
                                             sleep(3)
-                                            ws.ExportAsFixedFormat(0, sub_pasta + f"\\Fatura_Detalhada_{nome_pasta_cliente}_{mes}.{ano}")
+                                            ws.ExportAsFixedFormat(0, sub_pasta + f"\\Fatura_Detalhada_{nome_pasta_cliente}_{ano}.{mes}")
                                             wb.Close()
                                             excel.Quit()
                                             print("Inserindo valores no banco.")
@@ -666,6 +668,8 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                                 print("Cliente não encontrado!")
     except Exception as error:
         return (error)
+    finally:
+        pythoncom.CoUninitialize()
 
 def gera_boleto(mes, ano, lista_dir_clientes): 
     try:
@@ -695,7 +699,7 @@ def gera_boleto(mes, ano, lista_dir_clientes):
                 nome_pasta_cliente = pega_nome(pasta_cliente)
                 sub_pastas_cliente = listagem_pastas(pasta_cliente)
                 for sub_pasta in sub_pastas_cliente:
-                    if sub_pasta.__contains__(f"{mes}-{ano}"):
+                    if sub_pasta.__contains__(f"{ano}-{mes}"):
                         caminho_destino = Path(sub_pasta)
                         arquivos_cliente = listagem_arquivos(sub_pasta)
                         for arquivo in arquivos_cliente:
@@ -718,7 +722,7 @@ def gera_boleto(mes, ano, lista_dir_clientes):
                                     valor_fatura = valores[20]
                                     valor_fatura_formatado = f"{valor_fatura:.2f}".replace(".", ",")
                                     print(f"{nome_pasta_cliente} vai precisar de um boleto. Valor da fatura é: {valor_fatura}")
-                                    input("Pressione Enter para prosseguir...") 
+                                    sleep(1)
                                     elemento_search = procura_elemento(driver, "xpath", """//*[@id="entityList_filter"]"""+
                                                                       """/label/input""", 15)  
                                     if elemento_search:    
@@ -727,12 +731,12 @@ def gera_boleto(mes, ano, lista_dir_clientes):
                                         elif not cliente_cpf == '' and not cliente_cpf == None:
                                             elemento_search.send_keys(cliente_cpf)                       
                                     sleep(2)
-                                    try:
-                                        elemento_lista_clientes = procura_todos_elementos(driver, "xpath", """//*[@id="entityList"]"""+
-                                                                    """/tbody/tr/td[1]/a""" , 15)
-                                    except NoSuchElementException:
-                                        elemento_lista_clientes = procura_todos_elementos(driver, "xpath", """//*[@id="entityList"]"""+
-                                                                    """/tbody/tr[*]/td[1]/a""" , 15)
+                                    elemento_lista_clientes = procura_todos_elementos(driver, "xpath", """//*[@id="entityList"]"""+
+                                                                """/tbody/tr/td[1]/a""" , 15)
+                                    if elemento_lista_clientes == None:
+                                        elemento_search.clear()
+                                        break
+                                    
                                     for cliente_lista in elemento_lista_clientes:
                                         if cliente_lista.text.__contains__(str(cliente_cnpj)) or cliente_lista.text.__contains__(str(cliente_cpf)):
                                             cliente_lista.click()
@@ -750,9 +754,9 @@ def gera_boleto(mes, ano, lista_dir_clientes):
                                                 arquivos_downloads = listagem_arquivos_downloads()
                                                 arquivo_mais_recente = max(arquivos_downloads, key=os.path.getmtime)
                                                 if (arquivo_mais_recente.__contains__(".pdf") 
-                                                    and not arquivo_mais_recente.__contains__(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{mes}.{ano}")):
+                                                    and not arquivo_mais_recente.__contains__(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}")):
                                                     caminho_pdf = Path(arquivo_mais_recente)
-                                                    novo_nome_boleto = caminho_pdf.with_name(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{mes}.{ano}.pdf")
+                                                    novo_nome_boleto = caminho_pdf.with_name(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}.pdf")
                                                     caminho_pdf_mod = caminho_pdf.rename(novo_nome_boleto)
                                                     sleep(0.5)
                                                     copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
@@ -782,16 +786,16 @@ def envia_arquivos(mes, ano, lista_dir_clientes):
                 nome_pasta_cliente = pega_nome(pasta_cliente)
                 sub_pastas_cliente = listagem_pastas(pasta_cliente)
                 for sub_pasta in sub_pastas_cliente:
-                    if sub_pasta.__contains__(f"{mes}-{ano}"):
+                    if sub_pasta.__contains__(f"{ano}-{mes}"):
                         arquivos_cliente = listagem_arquivos(sub_pasta)
                         for arquivo in arquivos_cliente:
-                            if arquivo.__contains__("Extrato_Mensal_") and arquivo.__contains__(f"{nome_pasta_cliente}_{mes}.{ano}.pdf"):
+                            if arquivo.__contains__("Extrato_Mensal_") and arquivo.__contains__(f"{nome_pasta_cliente}_{ano}.{mes}.pdf"):
                                 extrato = True
                                 anexos.append(arquivo)
-                            elif arquivo.__contains__("Fatura_Detalhada_") and arquivo.__contains__(f"{nome_pasta_cliente}_{mes}.{ano}.pdf"):
+                            elif arquivo.__contains__("Fatura_Detalhada_") and arquivo.__contains__(f"{nome_pasta_cliente}_{ano}.{mes}.pdf"):
                                 fatura = True
                                 anexos.append(arquivo)
-                            elif arquivo.__contains__("Boleto_Recebimento_") and arquivo.__contains__(f"{nome_pasta_cliente}_{mes}.{ano}.pdf"):
+                            elif arquivo.__contains__("Boleto_Recebimento_") and arquivo.__contains__(f"{nome_pasta_cliente}_{ano}.{mes}.pdf"):
                                 boleto = True
                                 anexos.append(arquivo)
                         if extrato == True and fatura == True and boleto == True:
@@ -845,14 +849,17 @@ class execute(Resource):
         particao = json['particao']
         rotina = json['rotina']
 
+        if mes < 10:
+            mes = f"0{mes}"
+
         # ========================PARAMETROS INICIAS==============================
         dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
         dir_clientes_manaus = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Manaus"
         lista_dir_clientes = [dir_clientes_itaperuna, dir_clientes_manaus]
-        dir_extratos = f"{particao}:\\Meu Drive\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{mes}_{ano}"
-        modelo_fatura = Path(f"{particao}:\\Meu Drive\\Arquivos_Automacao\\Fatura_Detalhada_Modelo_00.0000_python.xlsx")
-        planilha_vales_sst = Path(f"{particao}:\\Meu Drive\\Relatorio_Vales_Saude_Seguranca\\{mes}-{ano}\\Relatorio_Vales_Saude_Seguranca_{mes}.{ano}.xlsx")
-        planilha_reembolsos = Path(f"{particao}:\\Meu Drive\\Relatorio_Boletos_Salario_Reembolso\\{mes}-{ano}\\Relatorio_Boletos_Salario_Reembolso.xlsx")
+        dir_extratos = f"{particao}:\\Meu Drive\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{ano}_{mes}"
+        modelo_fatura = Path(f"{particao}:\\Meu Drive\\Arquivos_Automacao\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
+        planilha_vales_sst = Path(f"{particao}:\\Meu Drive\\Relatorio_Vales_Saude_Seguranca\\{ano}-{mes}\\Relatorio_Vales_Saude_Seguranca_{ano}.{mes}.xlsx")
+        planilha_reembolsos = Path(f"{particao}:\\Meu Drive\\Relatorio_Boletos_Salario_Reembolso\\{ano}-{mes}\\Relatorio_Boletos_Salario_Reembolso.xlsx")
         sucesso = False
 
         # ========================LÓGICA DE EXECUÇÃO DO ROBÔ===========================
