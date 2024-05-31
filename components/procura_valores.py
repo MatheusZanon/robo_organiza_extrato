@@ -36,3 +36,18 @@ def procura_valores_com_codigo(cliente_id, cod_centro_custo, db_conf, mes, ano):
             return valores
     except Exception as error:
         print(error)
+
+def procura_salarios_com_codigo(cliente_id, cod_centro_custo, db_conf, mes, ano):
+    try:                
+        query_procura_valores = ler_sql('sql/procura_salarios_com_codigo_empresa.sql')
+        values_procura_valores = (cliente_id, cod_centro_custo, mes, ano)
+        with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
+            cursor.execute(query_procura_valores, values_procura_valores)
+            valores = cursor.fetchone()
+            conn.commit()
+        if valores:
+            return valores[0]
+        else:
+            return None
+    except Exception as error:
+        print(error)
