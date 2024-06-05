@@ -9,6 +9,7 @@ from components.procura_valores import procura_valores, procura_valores_com_codi
 from components.procura_elementos_web import procura_elemento, procura_todos_elementos, encontrar_elemento_shadow_root
 from components.configuracao_selenium_drive import configura_selenium_driver
 from components.enviar_emails import enviar_email_com_anexos
+from components.integracao_nibo import pegar_empresa_por_id, pegar_agendamento_de_pagamento_cliente_por_data, agendar_recebimento, cancelar_agendamento_de_recebimento
 import tkinter as tk
 import mysql.connector
 from re import search
@@ -18,7 +19,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, NamedStyle
 import win32com.client as win32
 from dotenv import load_dotenv
-import os
+import os, requests, json
 import pythoncom
 from time import sleep, time
 from datetime import date
@@ -645,6 +646,7 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_val
 
 def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
     try:
+        pythoncom.CoInitialize()
         input("Pressione ENTER para iniciar o processo de geração da fatura...")
         for diretorio in lista_dir_clientes:
             pastas_regioes = listagem_pastas(diretorio)
@@ -843,6 +845,8 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                                 print("Cliente não encontrado ou inativo!")
     except Exception as error:
         return (error)
+    finally:
+        pythoncom.CoUninitialize()
 
 def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_refazer):
     try:
@@ -861,8 +865,6 @@ def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_r
                             # Variáveis para planilha
                             nome_fatura = f"Fatura_Detalhada_{pega_nome(nome_pasta_cliente)}_{ano}.{mes}.xlsx"
                             caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"
-                            print()
-                            print(nome_fatura)
                             # COPIANDO A FATURA MODELO PARA A PASTA DO CLIENTE
                             copy(modelo_fatura, caminho_fatura)              
                             try:
@@ -1139,93 +1141,27 @@ def gera_boleto(mes, ano, lista_dir_clientes):
     driver.quit()
 
 def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer):
-    try:
-        actions, driver = start_chrome()
-        sleep(1)
-        elemento_cards = procura_todos_elementos(driver, "xpath", """//*[@id="myorganizations-container"]"""+
-                                                """/div/div[3]/ng-include[2]/div[*]/a/h3/span""", 20)
-        for card in elemento_cards:
-            if card.text == "HUMAN SOLUCOES E DESENVOLVIMENTOS EM RECURSOS HUMANOS LTDA":
-                card.click()
-                break
-        sleep(1.5)
-        elemento_contatos = procura_elemento(driver, "xpath", """//*[@id="page-organization-details"]/div[5]/div/div[2]"""+
-                                             """/div[2]/div/div/ul[2]/li[3]/a/span""", 20)
-        if elemento_contatos:
-            actions.move_to_element(elemento_contatos).perform()
-            elemento_clientes = procura_elemento(driver, "xpath", """//*[@id="page-organization-details"]/div[5]/div/div[2]"""+
-                                                 """/div[2]/div/div/ul[2]/li[3]/ul/li[1]/a/span""", 20)
-            elemento_clientes.click()
-            sleep(1)
-    except Exception as web_error:
-        print (web_error)
-    
-    try:
-        for cliente_id in lista_clientes_refazer:
-            cliente = procura_cliente_por_id(cliente_id, db_conf)
-            if cliente and cliente[7] == True:
-                nome_pasta_cliente = procura_pasta_cliente(cliente[1], lista_dir_clientes)
-                sub_pastas_cliente = listagem_pastas(nome_pasta_cliente)
-                for sub_pasta in sub_pastas_cliente:
-                    if f"{ano}-{mes}" in sub_pasta:
-                        caminho_destino = Path(sub_pasta)
-                        cliente_cnpj = cliente[2]
-                        cliente_cpf = cliente[3]
-                        valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
-                        if valores_financeiro:
-                            valor_fatura = valores_financeiro[20]
-                            valor_fatura_formatado = f"{valor_fatura:.2f}".replace(".", ",")
-                            print(f"Refazendo boleto | CLIENTE: {nome_pasta_cliente} - VALOR FATURA: {valor_fatura_formatado}")
-                            input("APERTE QUALQUER TECLA PARA CONTINUAR")
-                            elemento_search = procura_elemento(driver, "xpath", """//*[@id="entityList_filter"]"""+
-                                                                      """/label/input""", 15)  
-                            if elemento_search:    
-                                if not cliente_cnpj == '' and not cliente_cnpj == None:        
-                                    elemento_search.send_keys(cliente_cnpj)
-                                elif not cliente_cpf == '' and not cliente_cpf == None:
-                                    elemento_search.send_keys(cliente_cpf)                       
-                            sleep(2)
-                            try:
-                                elemento_lista_clientes = procura_todos_elementos(driver, "xpath", """//*[@id="entityList"]"""+
-                                                            """/tbody/tr/td[1]/a""" , 15)
-                            except NoSuchElementException:
-                                elemento_lista_clientes = procura_todos_elementos(driver, "xpath", """//*[@id="entityList"]"""+
-                                                            """/tbody/tr[*]/td[1]/a""" , 15)
-                            for cliente_lista in elemento_lista_clientes:
-                                if cliente_lista.text.__contains__(str(cliente_cnpj)) or cliente_lista.text.__contains__(str(cliente_cpf)):
-                                    cliente_lista.click()
-                                    sleep(1)
-                                    try:
-                                        sleep(0.7)
-                                        elemento_sem_lancamento = procura_elemento(driver, "class_name", """generic-list-no-content""", 4)
-                                        if elemento_sem_lancamento:
-                                            agendar_lancamento(mes, ano, driver, valor_fatura_formatado, actions)
-                                            sleep(1.5)
-                                            baixar_boleto_lancamento(mes, ano, driver, valor_fatura_formatado, elemento_search, actions)
-                                        elif elemento_sem_lancamento == None:
-                                            baixar_boleto_lancamento(mes, ano, driver, valor_fatura_formatado, elemento_search, actions)                                                   
-                                        sleep(4)
-                                        arquivos_downloads = listagem_arquivos_downloads()
-                                        arquivo_mais_recente = max(arquivos_downloads, key=os.path.getmtime)
-                                        if (arquivo_mais_recente.__contains__(".pdf") 
-                                            and not arquivo_mais_recente.__contains__(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}")):
-                                            caminho_pdf = Path(arquivo_mais_recente)
-                                            novo_nome_boleto = caminho_pdf.with_name(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}.pdf")
-                                            caminho_pdf_mod = caminho_pdf.rename(novo_nome_boleto)
-                                            sleep(0.5)
-                                            copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
-                                            if os.path.exists(caminho_pdf_mod):
-                                                os.remove(caminho_pdf_mod)
-                                    except NoSuchElementException:
-                                        print("Algum objeto nao foi encontrado!")
-                        else:
-                            print(f"Valores de financeiro não encontrados para {cliente[1]}")
-                    else:
-                        print(f"{ano}-{mes} não encontrados para {cliente[1]}")
-            else:
-                print(f"Cliente {cliente[1]} não encontrado ou inativo!")
-    except Exception as web_error:
-        print (web_error)
+    for cliente_id in lista_clientes_refazer:
+        #empresa = pegar_empresa_por_id(cliente_id)
+        agendar_recebimento(0, 0, mes, ano)
+        #print('cliente:')
+        #print(json.dumps(empresa, indent=4))
+        #if empresa:
+        #    agendamento_pagamento = pegar_agendamento_de_pagamento_cliente_por_data(empresa['id'], mes, ano)
+        #    print('agendamento:')
+        #    print(json.dumps(agendamento_pagamento, indent=4))
+    input()
+    """arquivos_downloads = listagem_arquivos_downloads()
+    arquivo_mais_recente = max(arquivos_downloads, key=os.path.getmtime)
+    if (arquivo_mais_recente.__contains__(".pdf") 
+        and not arquivo_mais_recente.__contains__(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}")):
+        caminho_pdf = Path(arquivo_mais_recente)
+        novo_nome_boleto = caminho_pdf.with_name(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}.pdf")
+        caminho_pdf_mod = caminho_pdf.rename(novo_nome_boleto)
+        sleep(0.5)
+        copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
+        if os.path.exists(caminho_pdf_mod):
+            os.remove(caminho_pdf_mod)"""
     
 def envia_arquivos(mes, ano, lista_dir_clientes):
     try:  
@@ -1287,7 +1223,6 @@ def envia_arquivos(mes, ano, lista_dir_clientes):
 def zerar_valores(mes, ano, lista_clientes):
     for cliente in lista_clientes:
         print(f"Zerando valores do cliente {cliente} para o mes {mes} e ano {ano}")
-        input()
         query_zera_valores = ler_sql("sql/zerar_valores.sql")
         values_zera_valores = (mes, ano, cliente)
         with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
@@ -1348,13 +1283,15 @@ class execute(Resource):
             envia_arquivos(mes, ano)
             sucesso = True
         elif rotina == "5. Refazer Processo":
-            zerar_valores(mes, ano, clientes)
-            reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales_sst, planilha_reembolsos)
-            refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes)
-            input()
-            #refazer_boleto(mes, ano, lista_dir_clientes, clientes)
-            #envia_arquivos(mes, ano, lista_dir_clientes)
-            sucesso = True
+            if len(clientes) > 0:
+                #zerar_valores(mes, ano, clientes)
+                #reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales_sst, planilha_reembolsos)
+                #refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes)
+                refazer_boleto(mes, ano, lista_dir_clientes, clientes)
+                #nput()
+                #envia_arquivos(mes, ano, lista_dir_clientes)
+                sucesso = True
+            sucesso = False
         else:
             print("Nenhuma rotina selecionada, encerrando o robô...")
             sucesso = False
