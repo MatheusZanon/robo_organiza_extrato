@@ -1142,11 +1142,13 @@ def gera_boleto(mes, ano, lista_dir_clientes):
 
 def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer):
     for cliente_id in lista_clientes_refazer:
-        #empresa = pegar_empresa_por_id(cliente_id)
-        agendar_recebimento(0, 0, mes, ano)
-        #print('cliente:')
-        #print(json.dumps(empresa, indent=4))
-        #if empresa:
+        empresa = pegar_empresa_por_id(cliente_id)
+        print(f"cliente: {json.dumps(empresa, indent=4)}")
+        if empresa:
+            recebimento = agendar_recebimento(empresa, 10.15, mes, ano)
+            deletado = cancelar_agendamento_de_recebimento(recebimento['idAgendamento'])
+            if deletado:
+                print(f"Recebimento {recebimento['idAgendamento']} deletado!")
         #    agendamento_pagamento = pegar_agendamento_de_pagamento_cliente_por_data(empresa['id'], mes, ano)
         #    print('agendamento:')
         #    print(json.dumps(agendamento_pagamento, indent=4))
