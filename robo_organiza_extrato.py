@@ -1143,27 +1143,66 @@ def gera_boleto(mes, ano, lista_dir_clientes):
 def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer):
     for cliente_id in lista_clientes_refazer:
         empresa = pegar_empresa_por_id(cliente_id)
-        print(f"cliente: {json.dumps(empresa, indent=4)}")
         if empresa:
-            recebimento = agendar_recebimento(empresa, 10.15, mes, ano)
-            deletado = cancelar_agendamento_de_recebimento(recebimento['idAgendamento'])
-            if deletado:
-                print(f"Recebimento {recebimento['idAgendamento']} deletado!")
-        #    agendamento_pagamento = pegar_agendamento_de_pagamento_cliente_por_data(empresa['id'], mes, ano)
-        #    print('agendamento:')
-        #    print(json.dumps(agendamento_pagamento, indent=4))
-    input()
-    """arquivos_downloads = listagem_arquivos_downloads()
-    arquivo_mais_recente = max(arquivos_downloads, key=os.path.getmtime)
-    if (arquivo_mais_recente.__contains__(".pdf") 
-        and not arquivo_mais_recente.__contains__(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}")):
-        caminho_pdf = Path(arquivo_mais_recente)
-        novo_nome_boleto = caminho_pdf.with_name(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}.pdf")
-        caminho_pdf_mod = caminho_pdf.rename(novo_nome_boleto)
-        sleep(0.5)
-        copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
-        if os.path.exists(caminho_pdf_mod):
-            os.remove(caminho_pdf_mod)"""
+            agendamento_pagamento = pegar_agendamento_de_pagamento_cliente_por_data(empresa['id'], mes, ano)
+            if agendamento_pagamento != False:
+                deletado = cancelar_agendamento_de_recebimento(agendamento_pagamento['scheduleId'])
+                if deletado:
+                    print(f"Recebimento {agendamento_pagamento['description']} deletado!")
+                    valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
+
+                    if not valores_financeiro:
+                        print(f"Valores de financeiro não encontrados para o cliente {empresa['name']}!")
+                        input("Pressione Enter para prosseguir para o proximo cliente...")
+                        continue
+
+                    recebimento = agendar_recebimento(empresa, valores_financeiro[20], mes, ano)
+                    if recebimento:
+                        print(f"Recebimento {recebimento['idAgendamento']} agendado!")
+                        try:
+                            cliente_db = procura_cliente_por_id(cliente_id, db_conf)
+                            if cliente_db and cliente_db[7] == True:
+                                for diretorio in lista_dir_clientes:
+                                    pastas_regioes = listagem_pastas(diretorio)
+                                    for pasta_cliente in pastas_regioes:
+                                        nome_pasta_cliente = pega_nome(pasta_cliente)
+                                        if nome_pasta_cliente.__contains__(str(cliente_db[1])):
+                                            # PASTA CLIENTE ENCONTRADA
+                                            sub_pastas_cliente = listagem_pastas(pasta_cliente)
+                                            for sub_pasta in sub_pastas_cliente:
+                                                if sub_pasta.__contains__(f"{ano}-{mes}"):
+                                                    # PASTA ANO-MES ENCONTRADA
+                                                    caminho_destino = Path(sub_pasta)
+                                                    arquivos_downloads = listagem_arquivos_downloads()
+                                                    arquivo_mais_recente = max(arquivos_downloads, key=os.path.getmtime)
+                                                    if (arquivo_mais_recente.__contains__(".pdf") 
+                                                        and not arquivo_mais_recente.__contains__(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}")):
+                                                        caminho_pdf = Path(arquivo_mais_recente)
+                                                        novo_nome_boleto = caminho_pdf.with_name(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}.pdf")
+                                                        caminho_pdf_mod = caminho_pdf.rename(novo_nome_boleto)
+                                                        sleep(0.5)
+                                                        copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
+                                                        if os.path.exists(caminho_pdf_mod):
+                                                            os.remove(caminho_pdf_mod)
+                                                        else:
+                                                            print("Arquivo nao encontrado no caminho para remocão!")
+                                                    else:
+                                                        print("Arquivo de boleto não encontrado!")
+                                        else:
+                                            print(f"Pasta do cliente {cliente_db[1]} não encontrada!")
+                            else:
+                                print(f"Cliente {cliente_db[1]} não encontrado ou inativo!")
+                        except Exception as error:
+                            print(f"Erro ao salvar o boleto na pasta do cliente: {error}")
+                            input()
+                    else:
+                        print(f"Recebimento {recebimento['idAgendamento']} não pode ser agendado!")
+                else:
+                    print(f"Recebimento {agendamento_pagamento['description']} não pode ser deletado!")
+            else:
+                print(f"Nenhum agendamento encontrado para o cliente {empresa['name']}!")
+        else:
+            print(f"Nenhuma empresa encontrada para o ID {cliente_id}!")
     
 def envia_arquivos(mes, ano, lista_dir_clientes):
     try:  
@@ -1286,11 +1325,11 @@ class execute(Resource):
             sucesso = True
         elif rotina == "5. Refazer Processo":
             if len(clientes) > 0:
-                #zerar_valores(mes, ano, clientes)
-                #reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales_sst, planilha_reembolsos)
-                #refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes)
+                zerar_valores(mes, ano, clientes)
+                reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales_sst, planilha_reembolsos)
+                refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes)
                 refazer_boleto(mes, ano, lista_dir_clientes, clientes)
-                #nput()
+                #input()
                 #envia_arquivos(mes, ano, lista_dir_clientes)
                 sucesso = True
             sucesso = False

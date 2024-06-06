@@ -2,14 +2,32 @@ from components.configuracao_db import configura_db
 from components.procura_cliente import procura_cliente_por_id
 from dotenv import load_dotenv
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
-import os, requests, json
+from time import sleep
+import os, requests, json, platform
 
 # ================= CARREGANDO VARIÁVEIS DE AMBIENTE======================
 load_dotenv()
 
 # =====================CONFIGURAÇÂO DO BANCO DE DADOS======================
 db_conf = configura_db()
+
+def get_download_path():
+    """Returns the default downloads path for Linux, MacOS, or Windows."""
+    if platform.system() == 'Windows':
+        from winreg import OpenKey, QueryValueEx, HKEY_CURRENT_USER
+        
+        sub_key = r'SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders'
+        downloads_guid = '{374DE290-123F-4565-9164-39C4925E467B}'
+        
+        with OpenKey(HKEY_CURRENT_USER, sub_key) as key:
+            downloads_path = QueryValueEx(key, downloads_guid)[0]
+        
+        return str(downloads_path)
+    
+    else:
+        from pathlib import Path
+        
+        return str(Path.home() / 'Downloads')
 
 def listar_empresas_clientes():
     NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
@@ -45,24 +63,70 @@ def pegar_agendamento_de_pagamento_cliente_por_data(id_cliente, mes, ano):
     NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
     NIBO_API_TOKEN = os.getenv('NIBO_API_TOKEN')
     NIBO_ORGANIZATION = os.getenv('NIBO_ORGANIZATION')
-    CATEGORY_ID = os.getenv('CATEGORY_ID')
+    CATEGORY_ID = os.getenv('NIBO_CATEGORY_ID')
 
-    if int(mes) == 12:
-        mes = "01"
+    # Incrementar o mês
+    mes = int(mes)
+    ano = int(ano)
+    
+    # Verificar se o mês é o de dezembro
+    if mes == 12:
+        mes_vencimento = 1
+        ano_vencimento = ano + 1
     else:
-        if int(mes) > 0 and int(mes) < 10: 
-            mes = "0" + str(int(mes) + 1)
-        elif int(mes) > 9:
-            mes = str(int(mes) + 1)
+        mes_vencimento = mes + 1
+        ano_vencimento = ano
 
     try:
-        response = requests.get(f"{NIBO_API_BASE_URL}/empresas/v1/customers/{id_cliente}/schedules/?organization={NIBO_ORGANIZATION}&$filter=year(dueDate) eq {ano} and month(dueDate) eq {mes} and category/id eq {CATEGORY_ID}&ApiToken={NIBO_API_TOKEN}")
+        response = requests.get(f"{NIBO_API_BASE_URL}/empresas/v1/customers/{id_cliente}/schedules/?organization={NIBO_ORGANIZATION}&$filter=year(dueDate) eq {ano_vencimento} and month(dueDate) eq {mes_vencimento} and category/id eq {CATEGORY_ID}&ApiToken={NIBO_API_TOKEN}")
+        if response.status_code == 200:
+            data = response.json()
+            return data['items'][0]
+        else:
+            False
     except Exception as e:
         print(f"Erro ao buscar Agendamento: {e}")
-    
-    if response.status_code == 200:
-        data = response.json()
-        return data['items'][0]
+        return False
+
+def consultar_boleto_recebimento_agendado(id_agendamento):
+    NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
+    NIBO_API_TOKEN = os.getenv('NIBO_API_TOKEN')
+    NIBO_ORGANIZATION = os.getenv('NIBO_ORGANIZATION')
+
+    try:
+        response = requests.get(f"{NIBO_API_BASE_URL}/empresas/v1/schedules/credit/{id_agendamento}/promise?organization={NIBO_ORGANIZATION}&ApiToken={NIBO_API_TOKEN}")
+
+        if response.status_code == 200:
+            data = response.json()
+            return data['items'][0]
+    except Exception as e:
+        print(f"Erro ao buscar Agendamento: {e}")
+        return False
+    return False
+
+def download_boleto_recebimento(boleto):
+    try:
+        retry = 0
+        while retry <= 2:
+            response_data_boleto_agendado_pdf = requests.get(boleto['url'], stream=True)
+
+            if response_data_boleto_agendado_pdf.status_code == 200 and response_data_boleto_agendado_pdf.headers.get('Content-Type') == 'application/pdf':
+                downloads = os.path.expanduser("~") + "\\Downloads"
+                arquivo = f"{get_download_path()}\\boleto.pdf"
+                with open(arquivo, 'wb') as file:
+                    file.write(response_data_boleto_agendado_pdf.content)
+                    print("Boleto gerado com sucesso!")
+                    return True
+            else:
+                retry += 1
+                sleep(1)
+
+        print(f"Erro ao baixar o boleto! {response_data_boleto_agendado_pdf.status_code}")
+        return False
+    except Exception as error:
+        print(f"Erro ao baixar o boleto: {error}")
+        input()
+        return False
 
 def agendar_recebimento(cliente, valor, mes, ano):
     NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
@@ -76,8 +140,9 @@ def agendar_recebimento(cliente, valor, mes, ano):
         valor = float(valor)
         # Truncar para no máximo duas casas decimais
         valor = round(valor, 2)
-    except ValueError:
-        raise ValueError("O valor deve ser um número válido.")
+    except Exception as error:
+        print(f"Erro ao tratar o valor: {error}")
+        return False
 
     # Incrementar o mês
     mes = int(mes)
@@ -106,6 +171,14 @@ def agendar_recebimento(cliente, valor, mes, ano):
     # Criar a data de lançamento no formato ISO 8601
     data_vencimento = f"{ano_vencimento}-{mes_vencimento}-{dia}T00:00:00"
 
+    # Verificar se a data de vencimento é retroativa, se for retroativa, retornar uma mensagem de erro
+    if not (now < datetime.fromisoformat(data_vencimento)):
+        print(f"Data de vencimento retroativa, data de vencimento: {data_vencimento} | data atual: {today_datetime}")
+        return False
+
+    print(f"Registrar Agendamento Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, vale transporte e taxa de administração de pessoas {mes:02d}/{ano} de valor {valor} para {cliente['name']}")
+    input(f"Pressione Enter para prosseguir com o agendamento...")
+
     json_agendamento = {
         "stakeholderId": str(cliente['id']),
         "description": f"Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, vale transporte e taxa de administração de pessoas {mes:02d}/{ano}",
@@ -116,31 +189,27 @@ def agendar_recebimento(cliente, valor, mes, ano):
         "isFlagged": False,
     }
 
-    print(f"agendamento: {json.dumps(json_agendamento, indent=4)}")
-    input("Pressione Enter para criar o boleto...")
-
     try:
         response_agendamento = requests.post(f"{NIBO_API_BASE_URL}/empresas/v1/schedules/credit/?organization={NIBO_ORGANIZATION}&ApiToken={NIBO_API_TOKEN}", json=json_agendamento)
 
         if response_agendamento.status_code == 200:
             response_data_agendamento = response_agendamento.json()
-            print(f"response: {json.dumps(response_data_agendamento, indent=4)}")
-            input()
+
+            district = f"{cliente['address']['line2']} {cliente['address']['district']}"
 
             json_boleto = {
                 "accountId": NIBO_AUTOMACAO_ID,
                 "scheduleId": response_data_agendamento,
                 "value": valor,
                 "dueDate": data_vencimento,
-                "bankSlipInstructions": "Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, vale transporte e taxa de administração de pessoas {mes:02d}/{ano}",
+                "bankSlipInstructions": f"Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, vale transporte e taxa de administração de pessoas {mes:02d}/{ano}",
                 "stakeholderInfo": {
                     "document": cliente['document']['number'],
                     "name": cliente['name'],
                     "email": cliente['email'],
                     "street": cliente['address']['line1'],
                     "number": cliente['address']['number'],
-                    "district": cliente['address']['district'],
-                    "complement": cliente['address']['line2'],
+                    "district": district,
                     "state": cliente['address']['state'],
                     "city": cliente['address']['city'],
                     "zipCode": str(cliente['address']['zipCode']).strip()
@@ -152,24 +221,36 @@ def agendar_recebimento(cliente, valor, mes, ano):
                 }]
             }
 
-            print(f"boleto: {json.dumps(json_boleto, indent=4)}")
-            print(f"url: {NIBO_API_BASE_URL}/empresas/v1/schedules/credit/{response_data_agendamento}/promise?organization={NIBO_ORGANIZATION}&ApiToken={NIBO_API_TOKEN}")
-            input("Pressione Enter para criar o boleto...")
-
             try:
                 response_boleto = requests.post(f"{NIBO_API_BASE_URL}/empresas/v1/schedules/credit/{response_data_agendamento}/promise?organization={NIBO_ORGANIZATION}&ApiToken={NIBO_API_TOKEN}", json=json_boleto)
 
                 response_data_boleto = response_boleto.json()
-                print(f"response: {json.dumps(response_data_boleto, indent=4)}")
                 if response_boleto.status_code == 200:
-                    return {
-                        "idAgendamento": response_data_agendamento,
-                        "idBoleto": response_data_boleto
-                    }
+                    response_data_boleto_agendado = consultar_boleto_recebimento_agendado(response_data_agendamento)
+                    boleto = download_boleto_recebimento(response_data_boleto_agendado)
+                    if boleto:
+                        response = {
+                            "idAgendamento": response_data_agendamento,
+                            "idBoleto": response_data_boleto
+                        }
+                        return response
+                    else:
+                        print(f"Erro ao baixar boleto: {boleto}")
+                        return False
+                else:
+                    print(f"Erro ao gerar boleto: {response_boleto.status_code} - {response_boleto.text}")
+                    return False
             except Exception as e:
                 print(f"Erro ao gerar boleto: {e}")
+                input()
+                return False
+        else:
+            print(f"Erro ao agendar Recebimento: {response_agendamento.status_code} - {response_agendamento.text}")
+            return False
     except Exception as e:
         print(f"Erro ao agendar Recebimento: {e}")
+        input()
+        return False
 
 def cancelar_agendamento_de_recebimento(id_agendamento):
     NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
@@ -178,7 +259,6 @@ def cancelar_agendamento_de_recebimento(id_agendamento):
 
     try:
         response = requests.delete(f"{NIBO_API_BASE_URL}/empresas/v1/schedules/debit/{id_agendamento}?organization={NIBO_ORGANIZATION}&ApiToken={NIBO_API_TOKEN}")
-        print(f"response: {json.dumps(response.json(), indent=4)}")
         if response.status_code == 204:
             return True
         else:
