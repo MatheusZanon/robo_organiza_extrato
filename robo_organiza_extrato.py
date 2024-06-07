@@ -644,6 +644,174 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_val
         else:
             print(f"O sistema retornou um erro: {error}")
 
+def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_financeiro, mes, ano, modelo_fatura):
+    caminho_sub_pasta = Path(caminho_sub_pasta_cliente)
+    # Variáveis para planilha
+    nome_fatura = f"Fatura_Detalhada_{nome_cliente}_{ano}.{mes}.xlsx"
+    caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"             
+    # COPIANDO A FATURA MODELO PARA A PASTA DO CLIENTE
+    copy(modelo_fatura, caminho_sub_pasta / nome_fatura)              
+    try:
+        # FORMATANDO A FATURA                                       
+        workbook = load_workbook(caminho_fatura)
+        sheet = workbook.active
+        # Criar um estilo de número personalizado para moeda
+        style_moeda = NamedStyle(name="estilo_moeda", number_format='_-R$ * #,##0.00_-;-R$ * #,##0.00_-;_-R$ * "-"??_-;_-@_-')
+        # Adicionar o estilo ao workbook (necessário apenas uma vez)
+        workbook.add_named_style(style_moeda)
+        # nome da planilha (em baixo)
+        sheet.title = f"{mes}.{ano}"
+        # titulo da fatura
+        sheet['D2'] = f"Fatura Detalhada - {nome_cliente}"
+        # convênio farmácia
+        if not valores_financeiro[1] == None:
+            sheet['J18'] = valores_financeiro[1]
+            conv_farmacia = valores_financeiro[1]
+        else:
+            conv_farmacia = 0
+        # adiantamento salarial
+        if not valores_financeiro[2] == None:
+            sheet['J10'] = valores_financeiro[2]
+            adiant_salarial = valores_financeiro[2]
+        else:
+            adiant_salarial = 0
+        # numero de funcionarios
+        if valores_financeiro[3] + valores_financeiro[4] == 1:
+            sheet['J6'] = 1
+            sheet['K6'] = 'funcionário'
+        else:
+            sheet['J6'] = valores_financeiro[3] + valores_financeiro[4]
+        # salários a pagar
+        sheet['A7'] = f"Salários a pagar {mes}.{ano}"
+        sheet['J7'] = valores_financeiro[12]
+        salarios_pagar = valores_financeiro[12]
+        # inss
+        sheet['A8'] = f"GPS (Guia da Previdência Social) {mes}.{ano}"
+        sheet['J8'] = valores_financeiro[9]
+        inss = valores_financeiro[9]
+        # fgts
+        sheet['A9'] = f"FGTS (Fundo de Garantia por Tempo de Serviço) {mes}.{ano}"
+        sheet['J9'] = valores_financeiro[10]
+        fgts = valores_financeiro[10]
+        # provisão de direitos trabalhistas
+        sheet['A11'] = f"Provisão de Direitos Trabalhistas {mes}.{ano}"
+        sheet['E11'] = valores_financeiro[8]
+        soma_salarios_provdt = valores_financeiro[8]
+        # irrf (folha de pagamento)
+        if not valores_financeiro[11] == None:
+            sheet['J12'] = valores_financeiro[11]
+            irrf = valores_financeiro[11]
+        else:
+            irrf = 0
+        # vale transporte
+        sheet['A15'] = f"Vale Transporte {mes}/{ano}"
+        if not valores_financeiro[13] == None:
+            sheet['J15'] = valores_financeiro[13]
+            vale_transp = valores_financeiro[13]
+        else:
+            vale_transp = 0
+        # assinatura eletrônica
+        if not valores_financeiro[14] == None:
+            sheet['J14'] = valores_financeiro[14]
+            assinatura_elet = valores_financeiro[14]
+        else:
+            assinatura_elet = 0
+        # vale refeição
+        sheet['A16'] = f"Vale Refeição {mes}/{ano}"
+        if not valores_financeiro[15] == None:
+            sheet['J16'] = valores_financeiro[15]
+            vale_refeic = valores_financeiro[15]
+        else:
+            vale_refeic = 0
+        # mensalidade do ponto eletrônico
+        if not valores_financeiro[16] == None:
+            sheet['J13'] = valores_financeiro[16]
+            mensal_ponto = valores_financeiro[16]
+        else:
+            mensal_ponto = 0
+        # saúde e segurança do trabalho
+        if not valores_financeiro[17] == None:
+            sheet['J17'] = valores_financeiro[17] 
+            sst = valores_financeiro[17]
+        else:
+            sst = 0
+        #reembolsos
+        query_procura_reembolsos = ler_sql('sql/procura_valores_reembolsos.sql')
+        values_procura_reembolsos = (cliente_id, mes, ano)
+        with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
+            cursor.execute(query_procura_reembolsos, values_procura_reembolsos)
+            reembolsos = cursor.fetchall()
+            conn.commit()
+        reembolso_total = 0
+        LINHA = 19 
+        if not reembolsos == []:
+            cel_1 = 23
+            cel_2 = 24
+            for reembolso in reembolsos:
+                cel_1 += 1
+                cel_2 += 1
+                sheet.insert_rows(19)
+                sheet[f'J{LINHA}'].style = style_moeda
+                sheet[f'A{LINHA}'].border = Border(bottom=Side(style='thin'), left=Side(style='thin'))
+                sheet[f'B{LINHA}'].border = Border(bottom=Side(style='thin'))
+                sheet[f'C{LINHA}'].border = Border(bottom=Side(style='thin'))
+                sheet[f'D{LINHA}'].border = Border(bottom=Side(style='thin'))
+                sheet[f'E{LINHA}'].border = Border(bottom=Side(style='thin'))
+                sheet[f'F{LINHA}'].border = Border(bottom=Side(style='thin'))
+                sheet[f'G{LINHA}'].border = Border(bottom=Side(style='thin'), left=Side(style='thin'))
+                sheet[f'H{LINHA}'].border = Border(bottom=Side(style='thin'))
+                sheet[f'I{LINHA}'].border = Border(bottom=Side(style='thin'), right=Side(style='thin'))
+                sheet[f'J{LINHA}'].border = Border(bottom=Side(style='thin'))
+                sheet[f'K{LINHA}'].border = Border(bottom=Side(style='thin'))
+                sheet[f'L{LINHA}'].border = Border(bottom=Side(style='thin'), right=Side(style='thin'))
+                sheet[f'A{LINHA}'] = reembolso[0]
+                sheet[f'J{LINHA}'] = reembolso[1]
+                sheet[f'J{cel_1 - 4}'] = f'=E11*H{cel_1 - 4}'
+                sheet[f'J{cel_1 - 3}'] = f'=SUM(J7:L{cel_1 - 4})'
+                sheet[f'H{cel_1 + 2}'] = f'=H{cel_1}-H{cel_2}'
+                sheet[f'J{cel_1}'] = f'=E11*H{cel_1}'
+                sheet[f'J{cel_2}'] = f'=E11*H{cel_2}'
+                sheet[f'J{cel_1 + 2}'] = f'=J{cel_1}-J{cel_2}'
+                reembolso_total = reembolso_total + reembolso[1]
+        # provisao de direitos trabalhistas
+        prov_direitos = round(soma_salarios_provdt * 0.3487, 2)
+        # percentual human
+        percent_human = round(soma_salarios_provdt * 0.12, 2)
+        # economia mensal
+        valor1 = round(soma_salarios_provdt * 0.8027, 2)
+        valor2 = round(soma_salarios_provdt * 0.4287, 2)
+        eco_mensal = round(valor1 - valor2, 2)
+        eco_liquida = round(eco_mensal - percent_human, 2)
+        workbook.save(caminho_fatura)
+        workbook.close()
+        # valor total da fatura
+        fatura = (salarios_pagar + inss + fgts + adiant_salarial + prov_direitos
+                    + irrf + mensal_ponto + assinatura_elet + vale_transp + vale_refeic
+                    + sst + conv_farmacia + percent_human + reembolso_total
+                    )
+        total_fatura = round(fatura, 2)
+
+        # GERANDO PDF DA FATURA
+        try:
+            print("Terminada a formatação da fatura, gerando pdf...")
+            excel = win32.gencache.EnsureDispatch('Excel.Application')
+            excel.Visible = True
+            wb = excel.Workbooks.Open(caminho_fatura)
+            ws = wb.Worksheets[f"{mes}.{ano}"]
+            sleep(3)
+            ws.ExportAsFixedFormat(0, caminho_sub_pasta_cliente + f"\\Fatura_Detalhada_{nome_cliente}_{ano}.{mes}")
+            wb.Close()
+            excel.Quit()
+            print("Inserindo valores no banco.")
+            query_fatura = ler_sql('sql/registra_valores_fatura.sql')
+            with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
+                cursor.execute(query_fatura, (percent_human, eco_mensal, eco_liquida, total_fatura, cliente_id, mes, ano))
+                conn.commit()
+        except Exception as error:
+            print(error)
+    except Exception as error:
+        print(error)
+
 def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
     try:
         pythoncom.CoInitialize()
@@ -673,172 +841,7 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                                 cliente_id = cliente[0]
                                 valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
                                 if valores_financeiro:
-                                    caminho_sub_pasta = Path(sub_pasta)
-                                    # Variáveis para planilha
-                                    nome_fatura = f"Fatura_Detalhada_{nome_pasta_cliente}_{ano}.{mes}.xlsx"
-                                    caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"             
-                                    # COPIANDO A FATURA MODELO PARA A PASTA DO CLIENTE
-                                    copy(modelo_fatura, caminho_sub_pasta / nome_fatura)              
-                                    try:
-                                        # FORMATANDO A FATURA                                       
-                                        workbook = load_workbook(caminho_fatura)
-                                        sheet = workbook.active
-                                        # Criar um estilo de número personalizado para moeda
-                                        style_moeda = NamedStyle(name="estilo_moeda", number_format='_-R$ * #,##0.00_-;-R$ * #,##0.00_-;_-R$ * "-"??_-;_-@_-')
-                                        # Adicionar o estilo ao workbook (necessário apenas uma vez)
-                                        workbook.add_named_style(style_moeda)
-                                        # nome da planilha (em baixo)
-                                        sheet.title = f"{mes}.{ano}"
-                                        # titulo da fatura
-                                        sheet['D2'] = f"Fatura Detalhada - {nome_pasta_cliente}"
-                                        # convênio farmácia
-                                        if not valores_financeiro[1] == None:
-                                            sheet['J18'] = valores_financeiro[1]
-                                            conv_farmacia = valores_financeiro[1]
-                                        else:
-                                            conv_farmacia = 0
-                                        # adiantamento salarial
-                                        if not valores_financeiro[2] == None:
-                                            sheet['J10'] = valores_financeiro[2]
-                                            adiant_salarial = valores_financeiro[2]
-                                        else:
-                                            adiant_salarial = 0
-                                        # numero de funcionarios
-                                        if valores_financeiro[3] + valores_financeiro[4] == 1:
-                                            sheet['J6'] = 1
-                                            sheet['K6'] = 'funcionário'
-                                        else:
-                                            sheet['J6'] = valores_financeiro[3] + valores_financeiro[4]
-                                        # salários a pagar
-                                        sheet['A7'] = f"Salários a pagar {mes}.{ano}"
-                                        sheet['J7'] = valores_financeiro[12]
-                                        salarios_pagar = valores_financeiro[12]
-                                        # inss
-                                        sheet['A8'] = f"GPS (Guia da Previdência Social) {mes}.{ano}"
-                                        sheet['J8'] = valores_financeiro[9]
-                                        inss = valores_financeiro[9]
-                                        # fgts
-                                        sheet['A9'] = f"FGTS (Fundo de Garantia por Tempo de Serviço) {mes}.{ano}"
-                                        sheet['J9'] = valores_financeiro[10]
-                                        fgts = valores_financeiro[10]
-                                        # provisão de direitos trabalhistas
-                                        sheet['A11'] = f"Provisão de Direitos Trabalhistas {mes}.{ano}"
-                                        sheet['E11'] = valores_financeiro[8]
-                                        soma_salarios_provdt = valores_financeiro[8]
-                                        # irrf (folha de pagamento)
-                                        if not valores_financeiro[11] == None:
-                                            sheet['J12'] = valores_financeiro[11]
-                                            irrf = valores_financeiro[11]
-                                        else:
-                                            irrf = 0
-                                        # vale transporte
-                                        sheet['A15'] = f"Vale Transporte {mes}/{ano}"
-                                        if not valores_financeiro[13] == None:
-                                            sheet['J15'] = valores_financeiro[13]
-                                            vale_transp = valores_financeiro[13]
-                                        else:
-                                            vale_transp = 0
-                                        # assinatura eletrônica
-                                        if not valores_financeiro[14] == None:
-                                            sheet['J14'] = valores_financeiro[14]
-                                            assinatura_elet = valores_financeiro[14]
-                                        else:
-                                            assinatura_elet = 0
-                                        # vale refeição
-                                        sheet['A16'] = f"Vale Refeição {mes}/{ano}"
-                                        if not valores_financeiro[15] == None:
-                                            sheet['J16'] = valores_financeiro[15]
-                                            vale_refeic = valores_financeiro[15]
-                                        else:
-                                            vale_refeic = 0
-                                        # mensalidade do ponto eletrônico
-                                        if not valores_financeiro[16] == None:
-                                            sheet['J13'] = valores_financeiro[16]
-                                            mensal_ponto = valores_financeiro[16]
-                                        else:
-                                            mensal_ponto = 0
-                                        # saúde e segurança do trabalho
-                                        if not valores_financeiro[17] == None:
-                                            sheet['J17'] = valores_financeiro[17] 
-                                            sst = valores_financeiro[17]
-                                        else:
-                                            sst = 0
-                                        #reembolsos
-                                        query_procura_reembolsos = ler_sql('sql/procura_valores_reembolsos.sql')
-                                        values_procura_reembolsos = (cliente_id, mes, ano)
-                                        with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                                            cursor.execute(query_procura_reembolsos, values_procura_reembolsos)
-                                            reembolsos = cursor.fetchall()
-                                            conn.commit()
-                                        reembolso_total = 0
-                                        LINHA = 19 
-                                        if not reembolsos == []:
-                                            cel_1 = 23
-                                            cel_2 = 24
-                                            for reembolso in reembolsos:
-                                                cel_1 += 1
-                                                cel_2 += 1
-                                                sheet.insert_rows(19)
-                                                sheet[f'J{LINHA}'].style = style_moeda
-                                                sheet[f'A{LINHA}'].border = Border(bottom=Side(style='thin'), left=Side(style='thin'))
-                                                sheet[f'B{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                                sheet[f'C{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                                sheet[f'D{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                                sheet[f'E{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                                sheet[f'F{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                                sheet[f'G{LINHA}'].border = Border(bottom=Side(style='thin'), left=Side(style='thin'))
-                                                sheet[f'H{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                                sheet[f'I{LINHA}'].border = Border(bottom=Side(style='thin'), right=Side(style='thin'))
-                                                sheet[f'J{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                                sheet[f'K{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                                sheet[f'L{LINHA}'].border = Border(bottom=Side(style='thin'), right=Side(style='thin'))
-                                                sheet[f'A{LINHA}'] = reembolso[0]
-                                                sheet[f'J{LINHA}'] = reembolso[1]
-                                                sheet[f'J{cel_1 - 4}'] = f'=E11*H{cel_1 - 4}'
-                                                sheet[f'J{cel_1 - 3}'] = f'=SUM(J7:L{cel_1 - 4})'
-                                                sheet[f'H{cel_1 + 2}'] = f'=H{cel_1}-H{cel_2}'
-                                                sheet[f'J{cel_1}'] = f'=E11*H{cel_1}'
-                                                sheet[f'J{cel_2}'] = f'=E11*H{cel_2}'
-                                                sheet[f'J{cel_1 + 2}'] = f'=J{cel_1}-J{cel_2}'
-                                                reembolso_total = reembolso_total + reembolso[1]
-                                        # provisao de direitos trabalhistas
-                                        prov_direitos = round(soma_salarios_provdt * 0.3487, 2)
-                                        # percentual human
-                                        percent_human = round(soma_salarios_provdt * 0.12, 2)
-                                        # economia mensal
-                                        valor1 = round(soma_salarios_provdt * 0.8027, 2)
-                                        valor2 = round(soma_salarios_provdt * 0.4287, 2)
-                                        eco_mensal = round(valor1 - valor2, 2)
-                                        eco_liquida = round(eco_mensal - percent_human, 2)
-                                        workbook.save(caminho_fatura)
-                                        workbook.close()
-                                        # valor total da fatura
-                                        fatura = (salarios_pagar + inss + fgts + adiant_salarial + prov_direitos
-                                                  + irrf + mensal_ponto + assinatura_elet + vale_transp + vale_refeic
-                                                  + sst + conv_farmacia + percent_human + reembolso_total
-                                                 )
-                                        total_fatura = round(fatura, 2)
-
-                                        # GERANDO PDF DA FATURA
-                                        try:
-                                            print("Terminada a formatação da fatura, gerando pdf...")
-                                            excel = win32.gencache.EnsureDispatch('Excel.Application')
-                                            excel.Visible = True
-                                            wb = excel.Workbooks.Open(caminho_fatura)
-                                            ws = wb.Worksheets[f"{mes}.{ano}"]
-                                            sleep(3)
-                                            ws.ExportAsFixedFormat(0, sub_pasta + f"\\Fatura_Detalhada_{nome_pasta_cliente}_{ano}.{mes}")
-                                            wb.Close()
-                                            excel.Quit()
-                                            print("Inserindo valores no banco.")
-                                            query_fatura = ler_sql('sql/registra_valores_fatura.sql')
-                                            with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                                                cursor.execute(query_fatura, (percent_human, eco_mensal, eco_liquida, total_fatura, cliente_id, mes, ano))
-                                                conn.commit()
-                                        except Exception as error:
-                                            print(error)
-                                    except Exception as error:
-                                        print(error)
+                                    cria_fatura(cliente_id, nome_pasta_cliente, sub_pasta, valores_financeiro, mes, ano, modelo_fatura)
                                 else: 
                                     print("Cliente não possue valores para gerar fatura!")
                             else:
@@ -861,174 +864,9 @@ def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_r
                         valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
                         if valores_financeiro:
                             print(f"Refazendo fatura para o cliente {cliente[1]} no mes {mes} e ano {ano}")
-                            caminho_sub_pasta = Path(sub_pasta)
-                            # Variáveis para planilha
-                            nome_fatura = f"Fatura_Detalhada_{pega_nome(nome_pasta_cliente)}_{ano}.{mes}.xlsx"
-                            caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"
-                            # COPIANDO A FATURA MODELO PARA A PASTA DO CLIENTE
-                            copy(modelo_fatura, caminho_fatura)              
-                            try:
-                                # FORMATANDO A FATURA                                       
-                                workbook = load_workbook(caminho_fatura)
-                                sheet = workbook.active
-                                # Criar um estilo de número personalizado para moeda
-                                style_moeda = NamedStyle(name="estilo_moeda", number_format='_-R$ * #,##0.00_-;-R$ * #,##0.00_-;_-R$ * "-"??_-;_-@_-')
-                                # Adicionar o estilo ao workbook (necessário apenas uma vez)
-                                workbook.add_named_style(style_moeda)
-                                # nome da planilha (em baixo)
-                                sheet.title = f"{mes}.{ano}"
-                                # titulo da fatura
-                                sheet['D2'] = f"Fatura Detalhada - {nome_pasta_cliente}"
-                                # convênio farmácia
-                                if not valores_financeiro[1] == None:
-                                    sheet['J18'] = valores_financeiro[1]
-                                    conv_farmacia = valores_financeiro[1]
-                                else:
-                                    conv_farmacia = 0
-                                # adiantamento salarial
-                                if not valores_financeiro[2] == None:
-                                    sheet['J10'] = valores_financeiro[2]
-                                    adiant_salarial = valores_financeiro[2]
-                                else:
-                                    adiant_salarial = 0
-                                # numero de funcionarios
-                                if valores_financeiro[3] + valores_financeiro[4] == 1:
-                                    sheet['J6'] = 1
-                                    sheet['K6'] = 'funcionário'
-                                else:
-                                    sheet['J6'] = valores_financeiro[3] + valores_financeiro[4]
-                                # salários a pagar
-                                sheet['A7'] = f"Salários a pagar {mes}.{ano}"
-                                sheet['J7'] = valores_financeiro[12]
-                                salarios_pagar = valores_financeiro[12]
-                                # inss
-                                sheet['A8'] = f"GPS (Guia da Previdência Social) {mes}.{ano}"
-                                sheet['J8'] = valores_financeiro[9]
-                                inss = valores_financeiro[9]
-                                # fgts
-                                sheet['A9'] = f"FGTS (Fundo de Garantia por Tempo de Serviço) {mes}.{ano}"
-                                sheet['J9'] = valores_financeiro[10]
-                                fgts = valores_financeiro[10]
-                                # provisão de direitos trabalhistas
-                                sheet['A11'] = f"Provisão de Direitos Trabalhistas {mes}.{ano}"
-                                sheet['E11'] = valores_financeiro[8]
-                                soma_salarios_provdt = valores_financeiro[8]
-                                # irrf (folha de pagamento)
-                                if not valores_financeiro[11] == None:
-                                    sheet['J12'] = valores_financeiro[11]
-                                    irrf = valores_financeiro[11]
-                                else:
-                                    irrf = 0
-                                # vale transporte
-                                sheet['A15'] = f"Vale Transporte {mes}/{ano}"
-                                if not valores_financeiro[13] == None:
-                                    sheet['J15'] = valores_financeiro[13]
-                                    vale_transp = valores_financeiro[13]
-                                else:
-                                    vale_transp = 0
-                                # assinatura eletrônica
-                                if not valores_financeiro[14] == None:
-                                    sheet['J14'] = valores_financeiro[14]
-                                    assinatura_elet = valores_financeiro[14]
-                                else:
-                                    assinatura_elet = 0
-                                # vale refeição
-                                sheet['A16'] = f"Vale Refeição {mes}/{ano}"
-                                if not valores_financeiro[15] == None:
-                                    sheet['J16'] = valores_financeiro[15]
-                                    vale_refeic = valores_financeiro[15]
-                                else:
-                                    vale_refeic = 0
-                                # mensalidade do ponto eletrônico
-                                if not valores_financeiro[16] == None:
-                                    sheet['J13'] = valores_financeiro[16]
-                                    mensal_ponto = valores_financeiro[16]
-                                else:
-                                    mensal_ponto = 0
-                                # saúde e segurança do trabalho
-                                if not valores_financeiro[17] == None:
-                                    sheet['J17'] = valores_financeiro[17] 
-                                    sst = valores_financeiro[17]
-                                else:
-                                    sst = 0
-                                #reembolsos
-                                query_procura_reembolsos = ler_sql('sql/procura_valores_reembolsos.sql')
-                                values_procura_reembolsos = (cliente_id, mes, ano)
-                                with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                                    cursor.execute(query_procura_reembolsos, values_procura_reembolsos)
-                                    reembolsos = cursor.fetchall()
-                                    conn.commit()
-                                reembolso_total = 0
-                                LINHA = 19 
-                                if not reembolsos == []:
-                                    cel_1 = 23
-                                    cel_2 = 24
-                                    for reembolso in reembolsos:
-                                        cel_1 += 1
-                                        cel_2 += 1
-                                        sheet.insert_rows(19)
-                                        sheet[f'J{LINHA}'].style = style_moeda
-                                        sheet[f'A{LINHA}'].border = Border(bottom=Side(style='thin'), left=Side(style='thin'))
-                                        sheet[f'B{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                        sheet[f'C{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                        sheet[f'D{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                        sheet[f'E{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                        sheet[f'F{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                        sheet[f'G{LINHA}'].border = Border(bottom=Side(style='thin'), left=Side(style='thin'))
-                                        sheet[f'H{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                        sheet[f'I{LINHA}'].border = Border(bottom=Side(style='thin'), right=Side(style='thin'))
-                                        sheet[f'J{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                        sheet[f'K{LINHA}'].border = Border(bottom=Side(style='thin'))
-                                        sheet[f'L{LINHA}'].border = Border(bottom=Side(style='thin'), right=Side(style='thin'))
-                                        sheet[f'A{LINHA}'] = reembolso[0]
-                                        sheet[f'J{LINHA}'] = reembolso[1]
-                                        sheet[f'J{cel_1 - 4}'] = f'=E11*H{cel_1 - 4}'
-                                        sheet[f'J{cel_1 - 3}'] = f'=SUM(J7:L{cel_1 - 4})'
-                                        sheet[f'H{cel_1 + 2}'] = f'=H{cel_1}-H{cel_2}'
-                                        sheet[f'J{cel_1}'] = f'=E11*H{cel_1}'
-                                        sheet[f'J{cel_2}'] = f'=E11*H{cel_2}'
-                                        sheet[f'J{cel_1 + 2}'] = f'=J{cel_1}-J{cel_2}'
-                                        reembolso_total = reembolso_total + reembolso[1]
-                                # provisao de direitos trabalhistas
-                                prov_direitos = round(soma_salarios_provdt * 0.3487, 2)
-                                # percentual human
-                                percent_human = round(soma_salarios_provdt * 0.12, 2)
-                                # economia mensal
-                                valor1 = round(soma_salarios_provdt * 0.8027, 2)
-                                valor2 = round(soma_salarios_provdt * 0.4287, 2)
-                                eco_mensal = round(valor1 - valor2, 2)
-                                eco_liquida = round(eco_mensal - percent_human, 2)
-                                workbook.save(caminho_fatura)
-                                workbook.close()
-                                # valor total da fatura
-                                fatura = (salarios_pagar + inss + fgts + adiant_salarial + prov_direitos
-                                        + irrf + mensal_ponto + assinatura_elet + vale_transp + vale_refeic
-                                        + sst + conv_farmacia + percent_human + reembolso_total
-                                        )
-                                total_fatura = round(fatura, 2)
-
-                                # GERANDO PDF DA FATURA
-                                try:
-                                    print("Terminada a formatação da fatura, gerando pdf...")
-                                    excel = win32.gencache.EnsureDispatch('Excel.Application')
-                                    excel.Visible = True
-                                    wb = excel.Workbooks.Open(caminho_fatura)
-                                    ws = wb.Worksheets[f"{mes}.{ano}"]
-                                    sleep(3)
-                                    ws.ExportAsFixedFormat(0, sub_pasta + f"\\Fatura_Detalhada_{nome_pasta_cliente}_{ano}.{mes}")
-                                    wb.Close()
-                                    excel.Quit()
-                                    print("Inserindo valores no banco.")
-                                    query_fatura = ler_sql('sql/registra_valores_fatura.sql')
-                                    with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                                        cursor.execute(query_fatura, (percent_human, eco_mensal, eco_liquida, total_fatura, cliente_id, mes, ano))
-                                        conn.commit()
-                                except Exception as error:
-                                    print(error)
-                            except Exception as error:
-                                print(error)
+                            cria_fatura(cliente_id, nome_pasta_cliente, sub_pasta, valores_financeiro, modelo_fatura)
                         else: 
-                            print("Cliente não possue valores para gerar fatura!")
+                            print("Cliente não possui valores para gerar fatura!")
                     else:
                         print(f"a pasta {ano}-{mes} não existe para o cliente {cliente[1]}! ")
             else:
@@ -1038,27 +876,28 @@ def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_r
     finally:
         pythoncom.CoUninitialize()
 
-def gera_boleto(mes, ano, lista_dir_clientes): 
+def copia_boleto_baixado(nome_cliente, mes, ano, pasta_cliente):
     try:
-        actions, driver = start_chrome()
-        sleep(1)
-        elemento_cards = procura_todos_elementos(driver, "xpath", """//*[@id="myorganizations-container"]"""+
-                                                """/div/div[3]/ng-include[2]/div[*]/a/h3/span""", 20)
-        for card in elemento_cards:
-            if card.text == "HUMAN SOLUCOES E DESENVOLVIMENTOS EM RECURSOS HUMANOS LTDA":
-                card.click()
-                break
-        sleep(1.5)
-        elemento_contatos = procura_elemento(driver, "xpath", """//*[@id="page-organization-details"]/div[5]/div/div[2]"""+
-                                             """/div[2]/div/div/ul[2]/li[3]/a/span""", 20)
-        if elemento_contatos:
-            actions.move_to_element(elemento_contatos).perform()
-            elemento_clientes = procura_elemento(driver, "xpath", """//*[@id="page-organization-details"]/div[5]/div/div[2]"""+
-                                                 """/div[2]/div/div/ul[2]/li[3]/ul/li[1]/a/span""", 20)
-            elemento_clientes.click()
-            sleep(1)
-    except Exception as web_error:
-        print (web_error)
+        arquivos_downloads = listagem_arquivos_downloads()
+        arquivo_mais_recente = max(arquivos_downloads, key=os.path.getmtime)
+        if (arquivo_mais_recente.__contains__(".pdf") 
+            and not arquivo_mais_recente.__contains__(f"Boleto_Recebimento_{nome_cliente.replace("S/S", "S S")}_{ano}.{mes}")):
+            caminho_pdf = Path(arquivo_mais_recente)
+            novo_nome_boleto = caminho_pdf.with_name(f"Boleto_Recebimento_{nome_cliente.replace("S/S", "S S")}_{ano}.{mes}.pdf")
+            caminho_pdf_mod = caminho_pdf.rename(novo_nome_boleto)
+            sleep(0.5)
+            copy(caminho_pdf_mod, pasta_cliente / caminho_pdf_mod.name)
+            if os.path.exists(caminho_pdf_mod):
+                os.remove(caminho_pdf_mod)
+            else:
+                print("Arquivo nao encontrado no caminho para remocão!")
+        else:
+            print("Arquivo de boleto não encontrado!")
+    except Exception as error:
+        print(f"Erro ao copiar o arquivo: {error}")
+        input("Pressione ENTER para sair...")
+
+def gera_boleto(mes, ano, lista_dir_clientes):
     try:
         for diretorio in lista_dir_clientes:
             pastas_regioes = listagem_pastas(diretorio)
@@ -1082,55 +921,14 @@ def gera_boleto(mes, ano, lista_dir_clientes):
                             cliente = procura_cliente(nome_pasta_cliente, db_conf)
                             if cliente and cliente[7] == True:
                                 cliente_id = cliente[0]
-                                cliente_cnpj = cliente[2]
-                                cliente_cpf = cliente[3]
                                 valores = procura_valores(cliente_id, db_conf, mes, ano)
                                 if valores:
                                     valor_fatura = valores[20]
-                                    valor_fatura_formatado = f"{valor_fatura:.2f}".replace(".", ",")
                                     print(f"{nome_pasta_cliente} vai precisar de um boleto. Valor da fatura é: {valor_fatura}")
                                     input("Pressione Enter para prosseguir...") 
-                                    elemento_search = procura_elemento(driver, "xpath", """//*[@id="entityList_filter"]"""+
-                                                                      """/label/input""", 15)  
-                                    if elemento_search:    
-                                        if not cliente_cnpj == '' and not cliente_cnpj == None:        
-                                            elemento_search.send_keys(cliente_cnpj)
-                                        elif not cliente_cpf == '' and not cliente_cpf == None:
-                                            elemento_search.send_keys(cliente_cpf)                       
-                                    sleep(2)
-                                    try:
-                                        elemento_lista_clientes = procura_todos_elementos(driver, "xpath", """//*[@id="entityList"]"""+
-                                                                    """/tbody/tr/td[1]/a""" , 15)
-                                    except NoSuchElementException:
-                                        elemento_lista_clientes = procura_todos_elementos(driver, "xpath", """//*[@id="entityList"]"""+
-                                                                    """/tbody/tr[*]/td[1]/a""" , 15)
-                                    for cliente_lista in elemento_lista_clientes:
-                                        if cliente_lista.text.__contains__(str(cliente_cnpj)) or cliente_lista.text.__contains__(str(cliente_cpf)):
-                                            cliente_lista.click()
-                                            sleep(1)
-                                            try:
-                                                sleep(0.7)
-                                                elemento_sem_lancamento = procura_elemento(driver, "class_name", """generic-list-no-content""", 4)
-                                                if elemento_sem_lancamento:
-                                                    agendar_lancamento(mes, ano, driver, valor_fatura_formatado, actions)
-                                                    sleep(1.5)
-                                                    baixar_boleto_lancamento(mes, ano, driver, valor_fatura_formatado, elemento_search, actions)
-                                                elif elemento_sem_lancamento == None:
-                                                    baixar_boleto_lancamento(mes, ano, driver, valor_fatura_formatado, elemento_search, actions)                                                   
-                                                sleep(4)
-                                                arquivos_downloads = listagem_arquivos_downloads()
-                                                arquivo_mais_recente = max(arquivos_downloads, key=os.path.getmtime)
-                                                if (arquivo_mais_recente.__contains__(".pdf") 
-                                                    and not arquivo_mais_recente.__contains__(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}")):
-                                                    caminho_pdf = Path(arquivo_mais_recente)
-                                                    novo_nome_boleto = caminho_pdf.with_name(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}.pdf")
-                                                    caminho_pdf_mod = caminho_pdf.rename(novo_nome_boleto)
-                                                    sleep(0.5)
-                                                    copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
-                                                    if os.path.exists(caminho_pdf_mod):
-                                                        os.remove(caminho_pdf_mod)
-                                            except NoSuchElementException:
-                                                print("Algum objeto nao foi encontrado!")
+                                    recebimento = agendar_recebimento(cliente, valor_fatura, mes, ano)
+                                    if recebimento:
+                                        copia_boleto_baixado(nome_pasta_cliente, mes, ano, caminho_destino)
                                 else:
                                     print(f"Valores de financeiro não encontrados para {nome_pasta_cliente}")
                             else:
@@ -1138,7 +936,6 @@ def gera_boleto(mes, ano, lista_dir_clientes):
     except Exception as error:
         print(error)
     print("PROCESSO DE BOLETO ENCERRADO!")
-    driver.quit()
 
 def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer):
     for cliente_id in lista_clientes_refazer:
@@ -1173,28 +970,14 @@ def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer):
                                                 if sub_pasta.__contains__(f"{ano}-{mes}"):
                                                     # PASTA ANO-MES ENCONTRADA
                                                     caminho_destino = Path(sub_pasta)
-                                                    arquivos_downloads = listagem_arquivos_downloads()
-                                                    arquivo_mais_recente = max(arquivos_downloads, key=os.path.getmtime)
-                                                    if (arquivo_mais_recente.__contains__(".pdf") 
-                                                        and not arquivo_mais_recente.__contains__(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}")):
-                                                        caminho_pdf = Path(arquivo_mais_recente)
-                                                        novo_nome_boleto = caminho_pdf.with_name(f"Boleto_Recebimento_{nome_pasta_cliente.replace("S/S", "S S")}_{ano}.{mes}.pdf")
-                                                        caminho_pdf_mod = caminho_pdf.rename(novo_nome_boleto)
-                                                        sleep(0.5)
-                                                        copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
-                                                        if os.path.exists(caminho_pdf_mod):
-                                                            os.remove(caminho_pdf_mod)
-                                                        else:
-                                                            print("Arquivo nao encontrado no caminho para remocão!")
-                                                    else:
-                                                        print("Arquivo de boleto não encontrado!")
+                                                    copia_boleto_baixado(nome_pasta_cliente, mes, ano, caminho_destino)
                                         else:
                                             print(f"Pasta do cliente {cliente_db[1]} não encontrada!")
                             else:
                                 print(f"Cliente {cliente_db[1]} não encontrado ou inativo!")
                         except Exception as error:
                             print(f"Erro ao salvar o boleto na pasta do cliente: {error}")
-                            input()
+                            input("Pressione Enter para prosseguir para o proximo cliente...")
                     else:
                         print(f"Recebimento {recebimento['idAgendamento']} não pode ser agendado!")
                 else:

@@ -175,13 +175,15 @@ def agendar_recebimento(cliente, valor, mes, ano):
     if not (now < datetime.fromisoformat(data_vencimento)):
         print(f"Data de vencimento retroativa, data de vencimento: {data_vencimento} | data atual: {today_datetime}")
         return False
+    
+    description_agendamento = f"Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, vale transporte e taxa de administração de pessoas {mes:02d}/{ano}"
 
-    print(f"Registrar Agendamento Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, vale transporte e taxa de administração de pessoas {mes:02d}/{ano} de valor {valor} para {cliente['name']}")
+    print(f"Registrar Agendamento | {description_agendamento} de valor {valor} para {cliente['name']}")
     input(f"Pressione Enter para prosseguir com o agendamento...")
 
     json_agendamento = {
         "stakeholderId": str(cliente['id']),
-        "description": f"Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, vale transporte e taxa de administração de pessoas {mes:02d}/{ano}",
+        "description": description_agendamento,
         "value": valor,
         "scheduleDate": today_datetime,
         "dueDate": data_vencimento,
@@ -195,6 +197,7 @@ def agendar_recebimento(cliente, valor, mes, ano):
         if response_agendamento.status_code == 200:
             response_data_agendamento = response_agendamento.json()
 
+            bankSlipInstructionsBoleto = f"Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, vale transporte e taxa de administração de pessoas {mes:02d}/{ano}"
             district = f"{cliente['address']['line2']} {cliente['address']['district']}"
 
             json_boleto = {
@@ -202,7 +205,7 @@ def agendar_recebimento(cliente, valor, mes, ano):
                 "scheduleId": response_data_agendamento,
                 "value": valor,
                 "dueDate": data_vencimento,
-                "bankSlipInstructions": f"Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, vale transporte e taxa de administração de pessoas {mes:02d}/{ano}",
+                "bankSlipInstructions": bankSlipInstructionsBoleto,
                 "stakeholderInfo": {
                     "document": cliente['document']['number'],
                     "name": cliente['name'],
