@@ -7,4 +7,4 @@ email,
 telefone_celular, 
 regiao,
 is_active  
-FROM clientes_financeiro WHERE nome_razao_social = %s
+FROM clientes_financeiro;
