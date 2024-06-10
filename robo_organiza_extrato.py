@@ -103,7 +103,7 @@ def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_fin
     nome_fatura = f"Fatura_Detalhada_{nome_cliente}_{ano}.{mes}.xlsx"
     caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"             
     # COPIANDO A FATURA MODELO PARA A PASTA DO CLIENTE
-    copy(modelo_fatura, caminho_sub_pasta / nome_fatura)              
+    copy(modelo_fatura, caminho_sub_pasta / nome_fatura)
     try:
         # FORMATANDO A FATURA                                       
         workbook = load_workbook(caminho_fatura)
@@ -313,148 +313,155 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
                         caminho_pasta_cliente = Path(procura_pasta_cliente(nome_centro_custo_mod, lista_dir_clientes))
                         caminho_sub_pasta_cliente = Path(f"{caminho_pasta_cliente}\\{ano}-{mes}")
                         caminho_sub_pasta_cliente.mkdir(parents=True, exist_ok=True)
-                        valores_extrato = procura_valores_com_codigo(cliente_id, cod_centro_custo, db_conf, mes, ano)
-                        if valores_extrato:
-                            print(f"Esses valores de extrato ja foram registrados para {nome_centro_custo}!\n")
+                        
+                        # CONVÊNIO FÁRMACIA
+                        match_convenio_farm = search(r"\d{3}\s*CONV[EÊ]NIO\s+FARM[AÁ]CIA\s*([\d.,]+)", texto_pdf)
+                        if match_convenio_farm:
+                            convenio_farmacia = float(match_convenio_farm.group(1).replace(".", "").replace(",", "."))
                         else:
-                            print(f"Registrando novos valores para {nome_centro_custo}\n")
-                            # CONVÊNIO FÁRMACIA
-                            match_convenio_farm = search(r"\d{3}\s*CONV[EÊ]NIO\s+FARM[AÁ]CIA\s*([\d.,]+)", texto_pdf)
-                            if match_convenio_farm:
-                                convenio_farmacia = float(match_convenio_farm.group(1).replace(".", "").replace(",", "."))
-                            else:
-                                convenio_farmacia = 0
-                            print(f"Convenio Farmacia: {convenio_farmacia}")
+                            convenio_farmacia = 0
+                        print(f"Convenio Farmacia: {convenio_farmacia}")
 
-                            # DESCONTO ADIANTAMENTO SALARIAL
-                            match_adiant_salarial = search(r"\d{3}\s*DESCONTO ADIANTAMENTO SALARIAL\s*([\d.,]+)", texto_pdf)
+                        # DESCONTO ADIANTAMENTO SALARIAL
+                        match_adiant_salarial = search(r"\d{3}\s*DESCONTO ADIANTAMENTO SALARIAL\s*([\d.,]+)", texto_pdf)
+                        if match_adiant_salarial:
+                            adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
+                        else: 
+                            adiant_salarial = 0
+                        if adiant_salarial == 0:
+                            match_adiant_salarial = search(r"\d{3}\s*DESC.ADIANT.SALARIAL\s*([\d.,]+)", texto_pdf)
                             if match_adiant_salarial:
                                 adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
                             else: 
                                 adiant_salarial = 0
-                            if adiant_salarial == 0:
-                                match_adiant_salarial = search(r"\d{3}\s*DESC.ADIANT.SALARIAL\s*([\d.,]+)", texto_pdf)
-                                if match_adiant_salarial:
-                                    adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
-                                else: 
-                                    adiant_salarial = 0
-                            print(f"Adiantamento Salarial: {adiant_salarial}")
-                            input('Pressione Enter para continuar...')
+                        print(f"Adiantamento Salarial: {adiant_salarial}")
+                        input('Pressione Enter para continuar...')
 
-                            # NUMERO DE EMPREGADOS
-                            match_demitido = search(r"No. Empregados: Demitido:\s*(\d+)", texto_pdf)
-                            if match_demitido:
-                                demitido = match_demitido.group(1)
-                                match_num_empregados = search(r"No. Empregados: Demitido:\s+" + demitido + 
-                                                                r"\s*(\d+)", texto_pdf)
-                                if match_num_empregados:
-                                    num_empregados = match_num_empregados.group(1)
-                                else: 
-                                    num_empregados = 0 
-                            else:
-                                num_empregados = 0
+                        # NUMERO DE EMPREGADOS
+                        match_demitido = search(r"No. Empregados: Demitido:\s*(\d+)", texto_pdf)
+                        if match_demitido:
+                            demitido = match_demitido.group(1)
+                            match_num_empregados = search(r"No. Empregados: Demitido:\s+" + demitido + 
+                                                            r"\s*(\d+)", texto_pdf)
+                            if match_num_empregados:
+                                num_empregados = match_num_empregados.group(1)
+                            else: 
+                                num_empregados = 0 
+                        else:
+                            num_empregados = 0
 
-                            # NUMERO DE ESTAGIARIOS
-                            match_transferido = search(r"No. Estagiários: Transferido:\s*(\d+)", texto_pdf)
-                            if match_transferido:
-                                transferido = match_transferido.group(1)
-                                match_num_estagiarios = search(r"No. Estagiários: Transferido:\s+" + transferido + 
-                                                                r"\s*(\d+)", texto_pdf)
-                                if match_num_estagiarios:
-                                    num_estagiarios = match_num_estagiarios.group(1)
-                                else: 
-                                    num_estagiarios = 0
-                            else:
+                        # NUMERO DE ESTAGIARIOS
+                        match_transferido = search(r"No. Estagiários: Transferido:\s*(\d+)", texto_pdf)
+                        if match_transferido:
+                            transferido = match_transferido.group(1)
+                            match_num_estagiarios = search(r"No. Estagiários: Transferido:\s+" + transferido + 
+                                                            r"\s*(\d+)", texto_pdf)
+                            if match_num_estagiarios:
+                                num_estagiarios = match_num_estagiarios.group(1)
+                            else: 
                                 num_estagiarios = 0
+                        else:
+                            num_estagiarios = 0
 
-                            # TRABALHANDO
-                            match_ferias = search(r"Trabalhando: Férias:\s*(\d+)", texto_pdf)
-                            if match_ferias:
-                                ferias = match_ferias.group(1)
-                                match_trabalhando = search(r"Trabalhando: Férias:\s+" + ferias + r"\s*(\d+)", texto_pdf)
-                                if match_trabalhando:
-                                    trabalhando = match_trabalhando.group(1)
-                                else:
-                                    trabalhando = 0
+                        # TRABALHANDO
+                        match_ferias = search(r"Trabalhando: Férias:\s*(\d+)", texto_pdf)
+                        if match_ferias:
+                            ferias = match_ferias.group(1)
+                            match_trabalhando = search(r"Trabalhando: Férias:\s+" + ferias + r"\s*(\d+)", texto_pdf)
+                            if match_trabalhando:
+                                trabalhando = match_trabalhando.group(1)
                             else:
                                 trabalhando = 0
+                        else:
+                            trabalhando = 0
 
-                            # SALARIO CONTRIBUIÇÃO EMPREGADOS
-                            match_salario_contri_empregados = search(r"Salário contribuição empregados:\s*([\d.,]+)", texto_pdf)
-                            if  match_salario_contri_empregados:
-                                salario_contri_empregados = float(match_salario_contri_empregados
+                        # SALARIO CONTRIBUIÇÃO EMPREGADOS
+                        match_salario_contri_empregados = search(r"Salário contribuição empregados:\s*([\d.,]+)", texto_pdf)
+                        if  match_salario_contri_empregados:
+                            salario_contri_empregados = float(match_salario_contri_empregados
+                                                            .group(1).replace(".", "").replace(",", "."))
+                        else: 
+                            salario_contri_empregados = 0
+
+                        # SALARIO CONTRIBUIÇÃO CONTRIBUINTES
+                        match_salario_contri_contribuintes = search(r"Salário contribuição contribuintes:\s*([\d.,]+)", 
+                                                                    texto_pdf)
+                        if  match_salario_contri_contribuintes:
+                            salario_contri_contribuintes = float(match_salario_contri_contribuintes
                                                                 .group(1).replace(".", "").replace(",", "."))
-                            else: 
-                                salario_contri_empregados = 0
+                        else:
+                            salario_contri_contribuintes = 0
+                        
+                        # SOMA DOS SALARIOS
+                        soma_salarios_provdt = salario_contri_empregados + salario_contri_contribuintes
 
-                            # SALARIO CONTRIBUIÇÃO CONTRIBUINTES
-                            match_salario_contri_contribuintes = search(r"Salário contribuição contribuintes:\s*([\d.,]+)", 
-                                                                        texto_pdf)
-                            if  match_salario_contri_contribuintes:
-                                salario_contri_contribuintes = float(match_salario_contri_contribuintes
-                                                                    .group(1).replace(".", "").replace(",", "."))
-                            else:
-                                salario_contri_contribuintes = 0
-                            
-                            # SOMA DOS SALARIOS
-                            soma_salarios_provdt = salario_contri_empregados + salario_contri_contribuintes
+                        # VALOR DO INSS
+                        match_inss = search(r"Total INSS:\s*([\d.,]+)", texto_pdf)
+                        if match_inss:
+                            inss = float(match_inss.group(1).replace(".", "").replace(",", "."))
+                        else:
+                            inss = 0
 
-                            # VALOR DO INSS
-                            match_inss = search(r"Total INSS:\s*([\d.,]+)", texto_pdf)
-                            if match_inss:
-                                inss = float(match_inss.group(1).replace(".", "").replace(",", "."))
-                            else:
-                                inss = 0
+                        # VALOR DO FGTS
+                        match_fgts = search(r"Valor do FGTS:\s*([\d.,]+)", texto_pdf)
+                        if  match_fgts:
+                            fgts = float(match_fgts.group(1).replace(".", "").replace(",", "."))
+                        else:
+                            fgts = 0
 
-                            # VALOR DO FGTS
-                            match_fgts = search(r"Valor do FGTS:\s*([\d.,]+)", texto_pdf)
-                            if  match_fgts:
-                                fgts = float(match_fgts.group(1).replace(".", "").replace(",", "."))
-                            else:
-                                fgts = 0
-
-                            # VALOR DO IRRF
-                            match_base_iss = search(r"([\d.,]+)\s+Valor Total do IRRF: Base ISS:", texto_pdf)
-                            if match_base_iss:
-                                base_iss = match_base_iss.group(1)
-                                match_irrf = search(r"([\d.,]+)\s+" + base_iss + r"\s+Valor Total do IRRF: Base ISS:", texto_pdf)
-                                if match_irrf:
-                                    irrf = float(match_irrf.group(1).replace(".", "").replace(",", "."))
-                                else:
-                                    irrf = 0
+                        # VALOR DO IRRF
+                        match_base_iss = search(r"([\d.,]+)\s+Valor Total do IRRF: Base ISS:", texto_pdf)
+                        if match_base_iss:
+                            base_iss = match_base_iss.group(1)
+                            match_irrf = search(r"([\d.,]+)\s+" + base_iss + r"\s+Valor Total do IRRF: Base ISS:", texto_pdf)
+                            if match_irrf:
+                                irrf = float(match_irrf.group(1).replace(".", "").replace(",", "."))
                             else:
                                 irrf = 0
+                        else:
+                            irrf = 0
 
-                            # LÍQUIDO CENTRO DE CUSTO - entra na coluna salarios a pagar
-                            match_liquido = search(r"Líquido Centro de Custo:\s*([\d.,]+)", texto_pdf)
-                            if  match_liquido:
-                                liquido_centro_custo = float(match_liquido.group(1).replace(".", "").replace(",", "."))
-                            else:
-                                liquido_centro_custo = 0
+                        # LÍQUIDO CENTRO DE CUSTO - entra na coluna salarios a pagar
+                        match_liquido = search(r"Líquido Centro de Custo:\s*([\d.,]+)", texto_pdf)
+                        if  match_liquido:
+                            liquido_centro_custo = float(match_liquido.group(1).replace(".", "").replace(",", "."))
+                        else:
+                            liquido_centro_custo = 0
 
-                            vale_transporte, assinat_eletronica, vale_refeicao, ponto_eletronico, sst = pega_valores_vales_reembolsos(mes, ano, 
-                                                                                                        cliente_id, nome_centro_custo_mod.replace("S/S", "S S"), 
-                                                                                                        planilha_vales_sst, planilha_reembolsos)
-                            # INSERÇÃO DE DADOS NO BANCO
-
-                            query_insert_valores = ler_sql('sql/registra_valores_extrato.sql')
-                            values_insert_valores = (cliente_id, cod_centro_custo, convenio_farmacia, adiant_salarial, num_empregados, 
+                        valores_extrato = procura_valores_com_codigo(cliente_id, cod_centro_custo, db_conf, mes, ano)
+                        if valores_extrato: # INSERÇÃO DE DADOS NO BANCO (ATUALIZA REGISTRO)
+                            query_update_valores = ler_sql('sql/atualiza_valores_extrato.sql')
+                            values_update_valores = (convenio_farmacia, adiant_salarial, num_empregados, 
                                                         num_estagiarios, trabalhando, salario_contri_empregados, 
                                                         salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, 
-                                                        irrf, liquido_centro_custo, vale_transporte, assinat_eletronica, 
-                                                        vale_refeicao, ponto_eletronico, sst, mes, ano, 0, 0
+                                                        irrf, liquido_centro_custo, cliente_id, cod_centro_custo, int(mes), ano
                                                         )
                             with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                                cursor.execute(query_insert_valores, values_insert_valores)
+                                cursor.execute(query_update_valores, values_update_valores)
                                 conn.commit()
-                            caminho_pdf = Path(extrato)
-                            if not nome_extrato.__contains__(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{ano}.{mes}"):
-                                novo_nome_extrato = caminho_pdf.with_name(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S").strip()}_{ano}.{mes}.pdf")
-                                caminho_pdf_mod = caminho_pdf.rename(novo_nome_extrato)
-                            else:
-                                caminho_pdf_mod = caminho_pdf
-                            caminho_destino = Path(caminho_sub_pasta_cliente)
-                            copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
+                        else: # INSERÇÃO DE DADOS NO BANCO (CRIA REGISTRO)
+                            try:
+                                query_insert_valores = ler_sql('sql/registra_valores_extrato.sql')
+                                values_insert_valores = (cliente_id, cod_centro_custo, convenio_farmacia, adiant_salarial, num_empregados, 
+                                                            num_estagiarios, trabalhando, salario_contri_empregados, 
+                                                            salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, 
+                                                            irrf, liquido_centro_custo, mes, ano, 0, 0
+                                                            )
+                                with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
+                                    cursor.execute(query_insert_valores, values_insert_valores)
+                                    conn.commit()
+                            except Exception as error:
+                                print(f"Erro ao registrar os valores de extrato: {error}")
+                                input()
+                        
+                        caminho_pdf = Path(extrato)
+                        if not nome_extrato.__contains__(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{ano}.{mes}"):
+                            novo_nome_extrato = caminho_pdf.with_name(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S").strip()}_{ano}.{mes}.pdf")
+                            caminho_pdf_mod = caminho_pdf.rename(novo_nome_extrato)
+                        else:
+                            caminho_pdf_mod = caminho_pdf
+                        caminho_destino = Path(caminho_sub_pasta_cliente)
+                        copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
                     else:
                         print(f"Cliente não encontrado ou inativo: {nome_centro_custo}\n")
     except Exception as error:
@@ -467,7 +474,6 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
     try:
         pythoncom.CoInitialize()
         input("Pressione ENTER para iniciar o processo de geração da fatura...")
-        pythoncom.CoInitialize()
         for diretorio in lista_dir_clientes:
             pastas_regioes = listagem_pastas(diretorio)
             for pasta_cliente in pastas_regioes:
@@ -492,10 +498,10 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                             if cliente and cliente[7] == True:
                                 cliente_id = cliente[0]
                                 valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
-                                if valores_financeiro:
+                                if valores_financeiro != None:
                                     cria_fatura(cliente_id, nome_pasta_cliente, sub_pasta, valores_financeiro, mes, ano, modelo_fatura)
                                 else: 
-                                    print("Cliente não possue valores para gerar fatura!")
+                                    print("Cliente não possui valores para gerar fatura!")
                             else:
                                 print("Cliente não encontrado ou inativo!")
     except Exception as error:
@@ -528,15 +534,13 @@ def gera_boleto(mes, ano, lista_dir_clientes):
                             if cliente and cliente[7] == True:
                                 cliente_id = cliente[0]
                                 valores = procura_valores(cliente_id, db_conf, mes, ano)
-                                if valores:
-                                    valor_fatura = valores[20]
-                                    print(f"{nome_pasta_cliente} vai precisar de um boleto. Valor da fatura é: {valor_fatura}")
-                                    input("Pressione Enter para prosseguir...") 
+                                valor_fatura = valores[20]
+                                if valor_fatura:
                                     recebimento = agendar_recebimento(cliente, valor_fatura, mes, ano)
                                     if recebimento:
                                         copia_boleto_baixado(nome_pasta_cliente, mes, ano, caminho_destino)
                                 else:
-                                    print(f"Valores de financeiro não encontrados para {nome_pasta_cliente}")
+                                    print(f"Valor da fatura não encontrado para {nome_pasta_cliente}")
                             else:
                                 print(f"Cliente {nome_pasta_cliente} não encontrado ou inativo!")                    
     except Exception as error:
@@ -880,9 +884,7 @@ class execute(Resource):
         rotina = json['rotina']
         clientes = json['clientes'] if json['clientes'] is not None else []
 
-        if mes < 10:
-            mes = f"0{mes}"
-
+        mes = int(mes)
         if mes < 10:
             mes = f"0{mes}"
 
@@ -890,8 +892,8 @@ class execute(Resource):
         dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\organiza_extrato\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
         dir_clientes_manaus = f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\organiza_extrato\\Cobranca_Clientes_terceirizacao\\Clientes Manaus"
         lista_dir_clientes = [dir_clientes_itaperuna, dir_clientes_manaus]
-        dir_extratos = f"{particao}:\\Meu Drive\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{ano}_{mes}"
-        modelo_fatura = Path(f"{particao}:\\Meu Drive\\Arquivos_Automacao\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
+        dir_extratos = f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\organiza_extrato\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{ano}_{mes}"
+        modelo_fatura = Path(f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\organiza_extrato\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
         planilha_vales_sst = Path(f"{particao}:\\Meu Drive\\Relatorio_Vales_Saude_Seguranca\\{ano}-{mes}\\Relatorio_Vales_Saude_Seguranca_{ano}.{mes}.xlsx")
         planilha_reembolsos = Path(f"{particao}:\\Meu Drive\\Relatorio_Boletos_Salario_Reembolso\\{ano}-{mes}\\Relatorio_Boletos_Salario_Reembolso.xlsx")
         sucesso = False

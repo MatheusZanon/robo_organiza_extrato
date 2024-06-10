@@ -197,26 +197,11 @@ def agendar_recebimento(cliente, valor, mes, ano):
         if response_agendamento.status_code == 200:
             response_data_agendamento = response_agendamento.json()
 
-            bankSlipInstructionsBoleto = f"Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, vale transporte e taxa de administração de pessoas {mes:02d}/{ano}"
-            district = f"{cliente['address']['line2']} {cliente['address']['district']}"
-
             json_boleto = {
                 "accountId": NIBO_AUTOMACAO_ID,
                 "scheduleId": response_data_agendamento,
                 "value": valor,
                 "dueDate": data_vencimento,
-                "bankSlipInstructions": bankSlipInstructionsBoleto,
-                "stakeholderInfo": {
-                    "document": cliente['document']['number'],
-                    "name": cliente['name'],
-                    "email": cliente['email'],
-                    "street": cliente['address']['line1'],
-                    "number": cliente['address']['number'],
-                    "district": district,
-                    "state": cliente['address']['state'],
-                    "city": cliente['address']['city'],
-                    "zipCode": str(cliente['address']['zipCode']).strip()
-                },
                 "items": [{
                     "description": "Sem detalhamento",
                     "quantity": 1,
