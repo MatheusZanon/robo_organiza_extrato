@@ -26,14 +26,6 @@ from datetime import date
 import pandas as pd
 from flask import Flask, request
 from flask_restful import Resource, Api, reqparse
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import  NoSuchElementException
-from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 
 
 # ================= CARREGANDO VARIÁVEIS DE AMBIENTE======================
@@ -55,55 +47,17 @@ corpo_email = os.getenv('CORPO_EMAIL')
 
 
 # ==================== MÉTODOS DE AUXÍLIO====================================
-def pega_valores_vales_reembolsos(mes, ano, cliente_id, centro_custo, planilha_vales_sst, planilha_reembolsos):
-    try:
-        df_vales_sst = pd.read_excel(planilha_vales_sst, usecols='C:H', skiprows=1)
-        vales = df_vales_sst.loc[df_vales_sst['CLIENTE'] == centro_custo, ['Vale Transporte', 'Assinatura Eletronica', 'Vale Refeição', 'Ponto Eletrônico', 'Saúde/Segurança do Trabalho']]
-        if not vales.empty:
-            vale_transporte = str(vales['Vale Transporte'].values[0]).replace("R$", "").replace(",", ".")
-            assinat_eletronica = str(vales['Assinatura Eletronica'].values[0]).replace("R$", "").replace(",", ".")
-            vale_refeicao = str(vales['Vale Refeição'].values[0]).replace("R$", "").replace(",", ".")
-            ponto_eletronico = str(vales['Ponto Eletrônico'].values[0]).replace("R$", "").replace(",", ".")
-            sst = str(vales['Saúde/Segurança do Trabalho'].values[0]).replace("R$", "").replace(",", ".")
-        else:
-            vale_transporte = 0
-            assinat_eletronica = 0
-            vale_refeicao = 0
-            ponto_eletronico = 0
-            sst = 0
-
-        df_reembolsos = pd.read_excel(planilha_reembolsos, usecols='B:D', skiprows=1)
-        reembolsos = df_reembolsos[(df_reembolsos['CLIENTE'] == centro_custo) & (df_reembolsos['Descrição'].notnull()) & (df_reembolsos['Valor'].notnull())]
-        descricao_reembolsos = reembolsos['Descrição'].tolist()
-        valores_reembolsos = reembolsos['Valor'].tolist()
-
-        if not descricao_reembolsos == [] and not valores_reembolsos == []:
-            for i in range(len(valores_reembolsos)):
-                query_search_reembolsos = ler_sql('sql/procura_valor_unico_reembolsos.sql')
-                values_search = (cliente_id, descricao_reembolsos[i], valores_reembolsos[i], mes, ano)
-                with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                    cursor.execute(query_search_reembolsos, values_search)
-                    reembolso = cursor.fetchone()
-                    conn.commit()
-                if reembolso == None:
-                    query_insert_reembolsos = ler_sql('sql/registra_valores_reembolsos.sql')
-                    values_insert = (cliente_id, descricao_reembolsos[i], valores_reembolsos[i], mes, ano)
-                    with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                        cursor.execute(query_insert_reembolsos, values_insert)
-                        conn.commit()
-                else:
-                    print("Reembolso já cadastrado!")
-        return vale_transporte, assinat_eletronica, vale_refeicao, ponto_eletronico, sst
-    except Exception as error:
-        print(error)
-
 def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_financeiro, mes, ano, modelo_fatura):
+    print(f"Gerando fatura para o cliente {nome_cliente} no mes {mes} e ano {ano}")
     caminho_sub_pasta = Path(caminho_sub_pasta_cliente)
-    # Variáveis para planilha
     nome_fatura = f"Fatura_Detalhada_{nome_cliente}_{ano}.{mes}.xlsx"
-    caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"             
-    # COPIANDO A FATURA MODELO PARA A PASTA DO CLIENTE
+    caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"     
+    print(caminho_sub_pasta, "\n", nome_fatura, "\n", caminho_fatura)
+    input()
+
     copy(modelo_fatura, caminho_sub_pasta / nome_fatura)
+    print("Copia feita com sucesso!")
+    input()
     try:
         # FORMATANDO A FATURA                                       
         workbook = load_workbook(caminho_fatura)
@@ -249,10 +203,14 @@ def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_fin
             print("Terminada a formatação da fatura, gerando pdf...")
             excel = win32.gencache.EnsureDispatch('Excel.Application')
             excel.Visible = True
+            print("Abrindo fatura.")
+            input("Pressione ENTER para continuar.")
             wb = excel.Workbooks.Open(caminho_fatura)
             ws = wb.Worksheets[f"{mes}.{ano}"]
             sleep(3)
 
+            print("Exportando PDF.")
+            input("Pressione ENTER para continuar.")
             ws.ExportAsFixedFormat(0, caminho_sub_pasta_cliente + f"\\Fatura_Detalhada_{nome_cliente}_{ano}.{mes}")
             wb.Close()
             excel.Quit()
@@ -289,52 +247,50 @@ def copia_boleto_baixado(nome_cliente, mes, ano, pasta_cliente):
 
 def valida_clientes(clientes, dir_extratos) -> list[int]:
     clientes_validos: list[int] = []
-
-    for cliente in clientes:
-        try:
-            pasta_faturas = listagem_pastas(dir_extratos)
-            if pasta_faturas:
-                for pasta in pasta_faturas:
-                    pasta_novos_extratos = Path(pasta) if Path(pasta).is_dir() and Path(pasta).name.find(f"novos_extratos") == 0 else None
-
-                if pasta_novos_extratos and pasta_novos_extratos.is_dir():
-                    extratos = listagem_arquivos(pasta_novos_extratos)
+    try:
+        pasta_faturas = listagem_pastas(dir_extratos)
+        if pasta_faturas:
+            for pasta in pasta_faturas:
+                pasta_novos_extratos = Path(pasta) if Path(pasta).is_dir() and Path(pasta).name.find(f"novos_extratos") == 0 else None
+            if pasta_novos_extratos and pasta_novos_extratos.is_dir():
+                extratos = listagem_arquivos(pasta_novos_extratos)
+                for cliente in clientes:
                     if extratos:
                         for extrato in extratos:
-                            nome_extrato = pega_nome(extrato)
-                            texto_pdf = extract_text_pdf(extrato)
+                            if extrato.__contains__(".pdf"):
+                                texto_pdf = extract_text_pdf(extrato)
 
-                            # Nome do Centro de Custo
-                            match_centro_custo = search(r"C\.Custo:\s*(.*)", texto_pdf)
-                            if match_centro_custo:
-                                nome_centro_custo = match_centro_custo.group(1).replace("í", "i").replace("ó", "o")
-                                partes = nome_centro_custo.split(" - ", 1)
-                                if len(partes) > 1:
-                                    nome_centro_custo_mod = partes[1].strip()
-                                    cod_centro_custo = partes[0].strip()
-                            
-                            cliente_db_extrato = procura_cliente(nome_centro_custo_mod, db_conf)
+                                # Nome do Centro de Custo
+                                match_centro_custo = search(r"C\.Custo:\s*(.*)", texto_pdf)
+                                if match_centro_custo:
+                                    nome_centro_custo = match_centro_custo.group(1).replace("í", "i").replace("ó", "o")
+                                    partes = nome_centro_custo.split(" - ", 1)
+                                    if len(partes) > 1:
+                                        nome_centro_custo_mod = partes[1].strip()
+                                
+                                cliente_db_extrato = procura_cliente(nome_centro_custo_mod, db_conf)
+                                cliente_id = int(cliente_db_extrato[0])
+                                cliente_is_active = bool(cliente_db_extrato[7])
 
-                            if not cliente_db_extrato:
-                                print(f"Cliente {nome_centro_custo_mod} não encontrado!")
-                                continue
-
-                            cliente_id = int(cliente_db_extrato[0])
-                            cliente_is_active = bool(cliente_db_extrato[7])
-                            
-                            if cliente_id == cliente and cliente_is_active == True:
-                                if clientes_validos.count(cliente_id) == 0:
-                                    clientes_validos.append(cliente_id)
+                                if cliente_id == cliente and cliente_is_active == True:
+                                    if clientes_validos.count(cliente_id) == 0:
+                                        clientes_validos.append(cliente_id)
+                                    break
+                            else:
+                                print(f"O arquivo {extrato} não é um arquivo PDF.")
                     else:
                         print(f"O cliente {cliente} não possui extratos no diretório {pasta_novos_extratos}.")
             else:
-                print(f"Pasta de faturas não encontrada.")
-        except Exception as error:
-            print(error)
-            input("Pressione ENTER para sair...")
+                print(f"Não há extratos no diretório {pasta_novos_extratos}.")
+        else:
+            print(f"Pasta de faturas não encontrada.")
+    except Exception as error:
+        print(error)
+        input("Pressione ENTER para sair...")
     return clientes_validos
+
 # ==================== MÉTODOS DE CADA ETAPA DO PROCESSO=======================
-def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales_sst, planilha_reembolsos):
+def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes):
     try:
         pasta_faturas = listagem_pastas(dir_extratos)
         for pasta in pasta_faturas:
@@ -658,13 +614,14 @@ def envia_arquivos(mes, ano, lista_dir_clientes):
 def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
     try:
         pasta_faturas = listagem_pastas(dir_extratos)
-        if pasta_faturas:
-            pasta_novos_extratos = None
-            for pasta in pasta_faturas:
-                pasta_novos_extratos = Path(pasta) if Path(pasta).is_dir() and Path(pasta).name.find(f"novos_extratos") == 0 else None
-            
-            if pasta_novos_extratos and pasta_novos_extratos.is_dir():
-                extratos = listagem_arquivos(pasta_novos_extratos)
+        pasta_novos_extratos = None
+        for pasta in pasta_faturas:
+            pasta_novos_extratos = Path(pasta) if Path(pasta).is_dir() and Path(pasta).name.find(f"novos_extratos") == 0 else None
+        
+        if pasta_novos_extratos:
+            extratos = listagem_arquivos(pasta_novos_extratos)
+            for cliente in clientes:
+                print(cliente)
                 if extratos:
                     for extrato in extratos:
                         if extrato.__contains__(".pdf"):
@@ -680,20 +637,11 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
                                     nome_centro_custo_mod = partes[1].strip()
                                     cod_centro_custo = partes[0].strip()
 
-                            cliente = procura_cliente(nome_centro_custo_mod, db_conf)
+                            cliente_db = procura_cliente(nome_centro_custo_mod, db_conf)
+                            cliente_id = cliente_db[0]
+                            cliente_is_active = bool(cliente_db[7])
 
-                            if not cliente:
-                                print(f"Cliente {nome_centro_custo_mod} não encontrado!\n")
-                                input()
-                                continue
-
-                            if cliente[0] not in clientes:
-                                print(f"Não foi encontrado o extrato do cliente {cliente[1]} no mes {mes} e ano {ano}! pulando...\n")
-                                input()
-                                continue
-
-                            if cliente and cliente[7] == True:
-                                cliente_id = cliente[0]
+                            if cliente_id == cliente and cliente_is_active == True:
                                 caminho_pasta_cliente = Path(procura_pasta_cliente(nome_centro_custo_mod, lista_dir_clientes))
                                 caminho_sub_pasta_cliente = Path(f"{caminho_pasta_cliente}\\{ano}-{mes}")
                                 caminho_sub_pasta_cliente.mkdir(parents=True, exist_ok=True)
@@ -820,9 +768,8 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
                                     values_update_valores = (convenio_farmacia, adiant_salarial, num_empregados, 
                                                                 num_estagiarios, trabalhando, salario_contri_empregados, 
                                                                 salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, 
-                                                                irrf, liquido_centro_custo, cliente_id, cod_centro_custo, int(mes), ano
+                                                                irrf, liquido_centro_custo, cliente_id, int(mes), ano
                                                                 )
-                                    
                                     with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
                                         cursor.execute(query_update_valores, values_update_valores)
                                         conn.commit()
@@ -834,9 +781,8 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
                                     else:
                                         caminho_pdf_mod = caminho_pdf
                                     caminho_destino = Path(caminho_sub_pasta_cliente)
-                                    caminho_pasta_mae = Path(caminho_destino / caminho_pdf_mod.name)
 
-                                    regiao_cliente = str(cliente[6]).strip().lower()
+                                    regiao_cliente = str(cliente_db[6]).strip().lower()
                                     caminho_destino_relatorios = os.path.join(*[part for part in caminho_pdf_mod.parts if caminho_pdf_mod.parts.index(part) < len(caminho_pdf_mod.parts) - 2])
 
                                     if regiao_cliente == 'itaperuna':
@@ -847,12 +793,14 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
                                     caminho_destino_relatorios = Path(caminho_destino_relatorios / caminho_pdf_mod.name)
                                     copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
                                     move(caminho_pdf_mod, caminho_destino_relatorios)
+                                    print(f"Extrato salvo: {caminho_pdf_mod.name}\n")
+                                    break
                             else:
-                                print(f"Cliente não encontrado ou inativo: {nome_centro_custo}\n")
-                        else:
-                            print(f"Não existem faturas para o mes {mes} e ano {ano} para o cliente {nome_centro_custo}!\n")
+                                print(f"{nome_centro_custo} não é o extrato do cliente atual, indo para o próximo!\n")
                 else:
-                    print(f"Não existem extratos para refazer!\n")
+                    print(f"Não existem extratos para o mes {mes} e ano {ano}!\n")
+        else:
+            print(f"Não existe pasta novos_extratos!\n")
     except Exception as error:
         if error.args == ("'NoneType' object is not iterable",):
             print("O diretório informado não foi especificado!")
@@ -865,37 +813,27 @@ def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_r
         for cliente_id in lista_clientes_refazer:
             cliente = procura_cliente_por_id(cliente_id, db_conf)
             if cliente and cliente[7] == True:
-                nome_pasta_cliente = procura_pasta_cliente(cliente[1], lista_dir_clientes)
-
-                if not nome_pasta_cliente:
-                    print(f"Pasta do cliente {cliente[1]} não encontrada!")
-                    input()
-                    continue
-
-                sub_pastas_clientes = listagem_pastas(nome_pasta_cliente)
-                print(sub_pastas_clientes)
-                input()
-
-                if not sub_pastas_clientes:
-                    print(f"Pasta do cliente {cliente[1]} vazia!")
-                    input()
-                    continue
-
-                sub_pasta = None
-
-                for sub_pasta_cliente in sub_pastas_clientes:
-                    if f"{ano}-{mes}" == Path(sub_pasta_cliente).name:
-                        sub_pasta = sub_pasta_cliente
-
-                if sub_pasta:
-                    valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
-                    if valores_financeiro:
-                        print(f"Refazendo fatura para o cliente {cliente[1]} no mes {mes} e ano {ano}")
-                        cria_fatura(cliente_id, cliente[1], sub_pasta, valores_financeiro, mes, ano, modelo_fatura)
-                    else: 
-                        print("Cliente não possui valores para gerar fatura!")
+                caminho_pasta_cliente = procura_pasta_cliente(cliente[1], lista_dir_clientes)
+                nome_pasta_cliente = pega_nome(caminho_pasta_cliente)
+                if nome_pasta_cliente:
+                    print(nome_pasta_cliente)
+                    sub_pastas_clientes = listagem_pastas(caminho_pasta_cliente)
+                    print(sub_pastas_clientes)
+                    sub_pasta = None
+                    for sub_pasta_cliente in sub_pastas_clientes:
+                        print(sub_pasta_cliente)
+                        if f"{ano}-{mes}" == Path(sub_pasta_cliente).name:
+                            sub_pasta = sub_pasta_cliente
+                    if sub_pasta:
+                        valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
+                        if valores_financeiro:
+                            cria_fatura(cliente_id, nome_pasta_cliente, sub_pasta, valores_financeiro, mes, ano, modelo_fatura)
+                        else: 
+                            print("Cliente não possui valores para gerar fatura!")
+                    else:
+                        print(f"A pasta {ano}-{mes} não existe para o cliente {cliente[1]}!")
                 else:
-                    print(f"A pasta {ano}-{mes} não existe para o cliente {cliente[1]}!")
+                    print(f"Pasta do cliente {cliente[1]} não encontrada!")
             else:
                 print(f"Cliente não encontrado ou inativo: {cliente[1]}\n")
     except Exception as error:
@@ -953,54 +891,17 @@ def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer):
         else:
             print(f"Nenhuma empresa encontrada para o ID {cliente_id}!")
  
-def zerar_valores(mes, ano, lista_clientes, dir_extratos):
-    for cliente in lista_clientes:
-        try:
-            pasta_faturas = listagem_pastas(dir_extratos)
-            if pasta_faturas:
-                for pasta in pasta_faturas:
-                    pasta_novos_extratos = Path(pasta) if Path(pasta).is_dir() and Path(pasta).name.find(f"novos_extratos") == 0 else None
-
-                if pasta_novos_extratos and pasta_novos_extratos.is_dir():
-                    extratos = listagem_arquivos(pasta_novos_extratos)
-                    if extratos:
-                        for extrato in extratos:
-                            nome_extrato = pega_nome(extrato)
-                            texto_pdf = extract_text_pdf(extrato)
-
-                            # Nome do Centro de Custo
-                            match_centro_custo = search(r"C\.Custo:\s*(.*)", texto_pdf)
-                            if match_centro_custo:
-                                nome_centro_custo = match_centro_custo.group(1).replace("í", "i").replace("ó", "o")
-                                partes = nome_centro_custo.split(" - ", 1)
-                                if len(partes) > 1:
-                                    nome_centro_custo_mod = partes[1].strip()
-                                    cod_centro_custo = partes[0].strip()
-                            
-                            cliente_db_extrato = procura_cliente(nome_centro_custo_mod, db_conf)
-
-                            if not cliente_db_extrato:
-                                print(f"Cliente {nome_centro_custo_mod} não encontrado!")
-                                continue
-
-                            cliente_id = int(cliente_db_extrato[0])
-                            cliente_nome = str(cliente_db_extrato[1])
-                            
-                            if cliente_id == cliente:
-                                # Zerando valores
-                                print(f"Zerando valores do cliente {cliente_nome} para o mes {mes} e ano {ano}")
-                                query_zera_valores = ler_sql("sql/zerar_valores.sql")
-                                values_zera_valores = (mes, ano, cliente)
-                                with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                                    cursor.execute(query_zera_valores, values_zera_valores)
-                                    conn.commit()
-                    else:
-                        print(f"Nenhum extrato encontrada para o mes {mes} e ano {ano}!")
-                else:
-                    print(f"Nenhuma pasta de extratos encontrada para refazer o mes {mes} e ano {ano}!")
-        except Exception as error:
-            print(f"Erro ao zerar os valores: {error}")
-            input("Pressione Enter para prosseguir para o proximo cliente...")
+def zerar_valores(mes, ano, lista_clientes):
+    try:
+        for cliente in lista_clientes:
+            query_zera_valores = ler_sql("sql/zerar_valores.sql")
+            values_zera_valores = (mes, ano, cliente)
+            with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
+                cursor.execute(query_zera_valores, values_zera_valores)
+                conn.commit()
+    except Exception as error:
+        print(f"Erro ao zerar os valores: {error}")
+        input("Pressione Enter para prosseguir para o proximo cliente...")
 
 # ==================CAIXA DE DIALOGO INICIAL============================
 app = Flask(__name__)
@@ -1028,26 +929,24 @@ class execute(Resource):
             mes = f"0{mes}"
 
         # ========================PARAMETROS INICIAS==============================
-        dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\organiza_extrato\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
-        dir_clientes_manaus = f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\organiza_extrato\\Cobranca_Clientes_terceirizacao\\Clientes Manaus"
+        dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
+        dir_clientes_manaus = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Manaus"
         lista_dir_clientes = [dir_clientes_itaperuna, dir_clientes_manaus]
-        dir_extratos = f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\organiza_extrato\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{ano}_{mes}"
-        modelo_fatura = Path(f"{particao}:\\Meu Drive\\15. Arquivos_Automacao\\organiza_extrato\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
-        planilha_vales_sst = Path(f"{particao}:\\Meu Drive\\Relatorio_Vales_Saude_Seguranca\\{ano}-{mes}\\Relatorio_Vales_Saude_Seguranca_{ano}.{mes}.xlsx")
-        planilha_reembolsos = Path(f"{particao}:\\Meu Drive\\Relatorio_Boletos_Salario_Reembolso\\{ano}-{mes}\\Relatorio_Boletos_Salario_Reembolso.xlsx")
+        dir_extratos = f"{particao}:\\Meu Drive\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{ano}_{mes}"
+        modelo_fatura = Path(f"{particao}:\\Meu Drive\\Arquivos_Automacao\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
         sucesso = False
 
         # ========================LÓGICA DE EXECUÇÃO DO ROBÔ===========================
         if rotina == "1. Organizar Extratos":
-            organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales_sst, planilha_reembolsos)
+            organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes)
             gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura)
-            gera_boleto(mes, ano, lista_dir_clientes)
-            envia_arquivos(mes, ano, lista_dir_clientes)
+            #gera_boleto(mes, ano, lista_dir_clientes)
+            #envia_arquivos(mes, ano, lista_dir_clientes)
             sucesso = True
         elif rotina == "2. Gerar Fatura Detalhada":
             gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura)
-            gera_boleto(mes, ano, lista_dir_clientes)
-            envia_arquivos(mes, ano, lista_dir_clientes)
+            #gera_boleto(mes, ano, lista_dir_clientes)
+            #envia_arquivos(mes, ano, lista_dir_clientes)
             sucesso = True
         elif rotina == "3. Gerar Boletos":
             gera_boleto(mes, ano, lista_dir_clientes)
@@ -1061,13 +960,15 @@ class execute(Resource):
                 clientes = [int(id) for id in clientes]
                 clientes_validos = valida_clientes(clientes, dir_extratos)
                 clientes_invalidos = list(set(clientes) - set(clientes_validos))
-
+                
                 if len(clientes_validos) > 0:
-                    zerar_valores(mes, ano, clientes_validos, dir_extratos)
+                    zerar_valores(mes, ano, clientes_validos)
+                    print("Valores Zerados!", clientes_validos)
                     reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes_validos)
+                    print("Extratos Reorganizados!", clientes_validos)
                     refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes_validos)
-                    refazer_boleto(mes, ano, lista_dir_clientes, clientes_validos)
-                    envia_arquivos(mes, ano, lista_dir_clientes)
+                    #refazer_boleto(mes, ano, lista_dir_clientes, clientes_validos)
+                    #envia_arquivos(mes, ano, lista_dir_clientes)
                     sucesso = True
                     print("Processo finalizado com sucesso!")
                     if len(clientes_invalidos) > 0:
@@ -1075,7 +976,7 @@ class execute(Resource):
                     input("Pressione ENTER para encerrar o robô...")
                 else:
                     print("Nenhum cliente valido, encerrando o robô...")
-                    sucesso = False
+                    sucesso = True
             else:
                 print("Nenhum cliente solicitado, encerrando o robô...")
                 sucesso = False
