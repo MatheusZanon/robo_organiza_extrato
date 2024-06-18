@@ -252,6 +252,7 @@ def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_fin
             wb = excel.Workbooks.Open(caminho_fatura)
             ws = wb.Worksheets[f"{mes}.{ano}"]
             sleep(3)
+
             ws.ExportAsFixedFormat(0, caminho_sub_pasta_cliente + f"\\Fatura_Detalhada_{nome_cliente}_{ano}.{mes}")
             wb.Close()
             excel.Quit()
@@ -286,11 +287,60 @@ def copia_boleto_baixado(nome_cliente, mes, ano, pasta_cliente):
         print(f"Erro ao copiar o arquivo: {error}")
         input("Pressione ENTER para sair...")
 
+def valida_clientes(clientes, dir_extratos) -> list[int]:
+    clientes_validos: list[int] = []
+
+    for cliente in clientes:
+        try:
+            pasta_faturas = listagem_pastas(dir_extratos)
+            if pasta_faturas:
+                for pasta in pasta_faturas:
+                    pasta_novos_extratos = Path(pasta) if Path(pasta).is_dir() and Path(pasta).name.find(f"novos_extratos") == 0 else None
+
+                if pasta_novos_extratos and pasta_novos_extratos.is_dir():
+                    extratos = listagem_arquivos(pasta_novos_extratos)
+                    if extratos:
+                        for extrato in extratos:
+                            nome_extrato = pega_nome(extrato)
+                            texto_pdf = extract_text_pdf(extrato)
+
+                            # Nome do Centro de Custo
+                            match_centro_custo = search(r"C\.Custo:\s*(.*)", texto_pdf)
+                            if match_centro_custo:
+                                nome_centro_custo = match_centro_custo.group(1).replace("í", "i").replace("ó", "o")
+                                partes = nome_centro_custo.split(" - ", 1)
+                                if len(partes) > 1:
+                                    nome_centro_custo_mod = partes[1].strip()
+                                    cod_centro_custo = partes[0].strip()
+                            
+                            cliente_db_extrato = procura_cliente(nome_centro_custo_mod, db_conf)
+
+                            if not cliente_db_extrato:
+                                print(f"Cliente {nome_centro_custo_mod} não encontrado!")
+                                continue
+
+                            cliente_id = int(cliente_db_extrato[0])
+                            cliente_is_active = bool(cliente_db_extrato[7])
+                            
+                            if cliente_id == cliente and cliente_is_active == True:
+                                if clientes_validos.count(cliente_id) == 0:
+                                    clientes_validos.append(cliente_id)
+                    else:
+                        print(f"O cliente {cliente} não possui extratos no diretório {pasta_novos_extratos}.")
+            else:
+                print(f"Pasta de faturas não encontrada.")
+        except Exception as error:
+            print(error)
+            input("Pressione ENTER para sair...")
+    return clientes_validos
 # ==================== MÉTODOS DE CADA ETAPA DO PROCESSO=======================
 def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales_sst, planilha_reembolsos):
     try:
         pasta_faturas = listagem_pastas(dir_extratos)
         for pasta in pasta_faturas:
+            if Path(pasta).name.find(f"novos_extratos") == 0:
+                continue
+
             extratos = listagem_arquivos(pasta)
             for extrato in extratos:
                 if extrato.__contains__(".pdf"):
@@ -308,7 +358,6 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
 
                     cliente = procura_cliente(nome_centro_custo_mod, db_conf)
                     if cliente and cliente[7] == True:
-                        print(cliente[1])
                         cliente_id = cliente[0]
                         caminho_pasta_cliente = Path(procura_pasta_cliente(nome_centro_custo_mod, lista_dir_clientes))
                         caminho_sub_pasta_cliente = Path(f"{caminho_pasta_cliente}\\{ano}-{mes}")
@@ -606,172 +655,204 @@ def envia_arquivos(mes, ano, lista_dir_clientes):
 
 
 # ================== MÉTODOS PARA REFAZER O PROCESSO ==================
-def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes):
+def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
     try:
         pasta_faturas = listagem_pastas(dir_extratos)
-        for pasta_fatura in pasta_faturas:
-            pasta_novos_extratos = listagem_pastas(pasta_fatura)
-            extratos = listagem_arquivos(pasta_novos_extratos[0])
-            for extrato in extratos:
-                if extrato.__contains__(".pdf"):
-                    nome_extrato = pega_nome(extrato)
-                    texto_pdf = extract_text_pdf(extrato)
+        if pasta_faturas:
+            pasta_novos_extratos = None
+            for pasta in pasta_faturas:
+                pasta_novos_extratos = Path(pasta) if Path(pasta).is_dir() and Path(pasta).name.find(f"novos_extratos") == 0 else None
+            
+            if pasta_novos_extratos and pasta_novos_extratos.is_dir():
+                extratos = listagem_arquivos(pasta_novos_extratos)
+                if extratos:
+                    for extrato in extratos:
+                        if extrato.__contains__(".pdf"):
+                            nome_extrato = pega_nome(extrato)
+                            texto_pdf = extract_text_pdf(extrato)
 
-                    # Nome do Centro de Custo
-                    match_centro_custo = search(r"C\.Custo:\s*(.*)", texto_pdf)
-                    if match_centro_custo:
-                        nome_centro_custo = match_centro_custo.group(1).replace("í", "i").replace("ó", "o")
-                        partes = nome_centro_custo.split(" - ", 1)
-                        if len(partes) > 1:
-                            nome_centro_custo_mod = partes[1].strip()
-                            cod_centro_custo = partes[0].strip()
+                            # Nome do Centro de Custo
+                            match_centro_custo = search(r"C\.Custo:\s*(.*)", texto_pdf)
+                            if match_centro_custo:
+                                nome_centro_custo = match_centro_custo.group(1).replace("í", "i").replace("ó", "o")
+                                partes = nome_centro_custo.split(" - ", 1)
+                                if len(partes) > 1:
+                                    nome_centro_custo_mod = partes[1].strip()
+                                    cod_centro_custo = partes[0].strip()
 
-                    cliente = procura_cliente(nome_centro_custo_mod, db_conf)
-                    if cliente and cliente[7] == True:
-                        cliente_id = cliente[0]
-                        caminho_pasta_cliente = Path(procura_pasta_cliente(nome_centro_custo_mod, lista_dir_clientes))
-                        caminho_sub_pasta_cliente = Path(f"{caminho_pasta_cliente}\\{ano}-{mes}")
-                        caminho_sub_pasta_cliente.mkdir(parents=True, exist_ok=True)
-                        salarios_extrato = procura_salarios_com_codigo(cliente_id, cod_centro_custo, db_conf, mes, ano)
-                        if salarios_extrato:
-                            print(f"{nome_centro_custo} ja possui valores registrados!\n")
+                            cliente = procura_cliente(nome_centro_custo_mod, db_conf)
+
+                            if not cliente:
+                                print(f"Cliente {nome_centro_custo_mod} não encontrado!\n")
+                                input()
+                                continue
+
+                            if cliente[0] not in clientes:
+                                print(f"Não foi encontrado o extrato do cliente {cliente[1]} no mes {mes} e ano {ano}! pulando...\n")
+                                input()
+                                continue
+
+                            if cliente and cliente[7] == True:
+                                cliente_id = cliente[0]
+                                caminho_pasta_cliente = Path(procura_pasta_cliente(nome_centro_custo_mod, lista_dir_clientes))
+                                caminho_sub_pasta_cliente = Path(f"{caminho_pasta_cliente}\\{ano}-{mes}")
+                                caminho_sub_pasta_cliente.mkdir(parents=True, exist_ok=True)
+                                salarios_extrato = procura_salarios_com_codigo(cliente_id, cod_centro_custo, db_conf, mes, ano)
+                                if salarios_extrato:
+                                    print(f"{nome_centro_custo} ja possui valores registrados!\n")
+                                else:
+                                    # CONVÊNIO FÁRMACIA
+                                    match_convenio_farm = search(r"\d{3}\s*CONV[EÊ]NIO\s+FARM[AÁ]CIA\s*([\d.,]+)", texto_pdf)
+                                    if match_convenio_farm:
+                                        convenio_farmacia = float(match_convenio_farm.group(1).replace(".", "").replace(",", "."))
+                                    else:
+                                        convenio_farmacia = 0
+                                    print(f"Convenio Farmacia: {convenio_farmacia}")
+
+                                    # DESCONTO ADIANTAMENTO SALARIAL
+                                    match_adiant_salarial = search(r"\d{3}\s*DESCONTO ADIANTAMENTO SALARIAL\s*([\d.,]+)", texto_pdf)
+                                    if match_adiant_salarial:
+                                        adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
+                                    else: 
+                                        adiant_salarial = 0
+                                    if adiant_salarial == 0:
+                                        match_adiant_salarial = search(r"\d{3}\s*DESC.ADIANT.SALARIAL\s*([\d.,]+)", texto_pdf)
+                                        if match_adiant_salarial:
+                                            adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
+                                        else: 
+                                            adiant_salarial = 0
+                                    print(f"Adiantamento Salarial: {adiant_salarial}")
+                                    input('Pressione Enter para continuar...')
+
+                                    # NUMERO DE EMPREGADOS
+                                    match_demitido = search(r"No. Empregados: Demitido:\s*(\d+)", texto_pdf)
+                                    if match_demitido:
+                                        demitido = match_demitido.group(1)
+                                        match_num_empregados = search(r"No. Empregados: Demitido:\s+" + demitido + 
+                                                                        r"\s*(\d+)", texto_pdf)
+                                        if match_num_empregados:
+                                            num_empregados = match_num_empregados.group(1)
+                                        else: 
+                                            num_empregados = 0 
+                                    else:
+                                        num_empregados = 0
+
+                                    # NUMERO DE ESTAGIARIOS
+                                    match_transferido = search(r"No. Estagiários: Transferido:\s*(\d+)", texto_pdf)
+                                    if match_transferido:
+                                        transferido = match_transferido.group(1)
+                                        match_num_estagiarios = search(r"No. Estagiários: Transferido:\s+" + transferido + 
+                                                                        r"\s*(\d+)", texto_pdf)
+                                        if match_num_estagiarios:
+                                            num_estagiarios = match_num_estagiarios.group(1)
+                                        else: 
+                                            num_estagiarios = 0
+                                    else:
+                                        num_estagiarios = 0
+
+                                    # TRABALHANDO
+                                    match_ferias = search(r"Trabalhando: Férias:\s*(\d+)", texto_pdf)
+                                    if match_ferias:
+                                        ferias = match_ferias.group(1)
+                                        match_trabalhando = search(r"Trabalhando: Férias:\s+" + ferias + r"\s*(\d+)", texto_pdf)
+                                        if match_trabalhando:
+                                            trabalhando = match_trabalhando.group(1)
+                                        else:
+                                            trabalhando = 0
+                                    else:
+                                        trabalhando = 0
+
+                                    # SALARIO CONTRIBUIÇÃO EMPREGADOS
+                                    match_salario_contri_empregados = search(r"Salário contribuição empregados:\s*([\d.,]+)", texto_pdf)
+                                    if  match_salario_contri_empregados:
+                                        salario_contri_empregados = float(match_salario_contri_empregados
+                                                                        .group(1).replace(".", "").replace(",", "."))
+                                    else: 
+                                        salario_contri_empregados = 0
+
+                                    # SALARIO CONTRIBUIÇÃO CONTRIBUINTES
+                                    match_salario_contri_contribuintes = search(r"Salário contribuição contribuintes:\s*([\d.,]+)", 
+                                                                                texto_pdf)
+                                    if  match_salario_contri_contribuintes:
+                                        salario_contri_contribuintes = float(match_salario_contri_contribuintes
+                                                                            .group(1).replace(".", "").replace(",", "."))
+                                    else:
+                                        salario_contri_contribuintes = 0
+                                    
+                                    # SOMA DOS SALARIOS
+                                    soma_salarios_provdt = salario_contri_empregados + salario_contri_contribuintes
+
+                                    # VALOR DO INSS
+                                    match_inss = search(r"Total INSS:\s*([\d.,]+)", texto_pdf)
+                                    if match_inss:
+                                        inss = float(match_inss.group(1).replace(".", "").replace(",", "."))
+                                    else:
+                                        inss = 0
+
+                                    # VALOR DO FGTS
+                                    match_fgts = search(r"Valor do FGTS:\s*([\d.,]+)", texto_pdf)
+                                    if  match_fgts:
+                                        fgts = float(match_fgts.group(1).replace(".", "").replace(",", "."))
+                                    else:
+                                        fgts = 0
+
+                                    # VALOR DO IRRF
+                                    match_base_iss = search(r"([\d.,]+)\s+Valor Total do IRRF: Base ISS:", texto_pdf)
+                                    if match_base_iss:
+                                        base_iss = match_base_iss.group(1)
+                                        match_irrf = search(r"([\d.,]+)\s+" + base_iss + r"\s+Valor Total do IRRF: Base ISS:", texto_pdf)
+                                        if match_irrf:
+                                            irrf = float(match_irrf.group(1).replace(".", "").replace(",", "."))
+                                        else:
+                                            irrf = 0
+                                    else:
+                                        irrf = 0
+
+                                    # LÍQUIDO CENTRO DE CUSTO - entra na coluna salarios a pagar
+                                    match_liquido = search(r"Líquido Centro de Custo:\s*([\d.,]+)", texto_pdf)
+                                    if  match_liquido:
+                                        liquido_centro_custo = float(match_liquido.group(1).replace(".", "").replace(",", "."))
+                                    else:
+                                        liquido_centro_custo = 0
+
+                                    # INSERÇÃO DE DADOS NO BANCO
+                                    query_update_valores = ler_sql('sql/atualiza_valores_extrato.sql')
+                                    values_update_valores = (convenio_farmacia, adiant_salarial, num_empregados, 
+                                                                num_estagiarios, trabalhando, salario_contri_empregados, 
+                                                                salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, 
+                                                                irrf, liquido_centro_custo, cliente_id, cod_centro_custo, int(mes), ano
+                                                                )
+                                    
+                                    with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
+                                        cursor.execute(query_update_valores, values_update_valores)
+                                        conn.commit()
+
+                                    caminho_pdf = Path(extrato)
+                                    if not nome_extrato.__contains__(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{ano}.{mes}"):
+                                        novo_nome_extrato = caminho_pdf.with_name(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S").strip()}_{ano}.{mes}.pdf")
+                                        caminho_pdf_mod = caminho_pdf.rename(novo_nome_extrato)
+                                    else:
+                                        caminho_pdf_mod = caminho_pdf
+                                    caminho_destino = Path(caminho_sub_pasta_cliente)
+                                    caminho_pasta_mae = Path(caminho_destino / caminho_pdf_mod.name)
+
+                                    regiao_cliente = str(cliente[6]).strip().lower()
+                                    caminho_destino_relatorios = os.path.join(*[part for part in caminho_pdf_mod.parts if caminho_pdf_mod.parts.index(part) < len(caminho_pdf_mod.parts) - 2])
+
+                                    if regiao_cliente == 'itaperuna':
+                                        caminho_destino_relatorios = Path([pasta for pasta in pasta_faturas if 'itaperuna' in str(pasta)][0])
+                                    elif regiao_cliente == 'manaus':
+                                        caminho_destino_relatorios = Path([pasta for pasta in pasta_faturas if 'manaus' in str(pasta)][0])
+                                    
+                                    caminho_destino_relatorios = Path(caminho_destino_relatorios / caminho_pdf_mod.name)
+                                    copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
+                                    move(caminho_pdf_mod, caminho_destino_relatorios)
+                            else:
+                                print(f"Cliente não encontrado ou inativo: {nome_centro_custo}\n")
                         else:
-                            # CONVÊNIO FÁRMACIA
-                            match_convenio_farm = search(r"\d{3}\s*CONV[EÊ]NIO\s+FARM[AÁ]CIA\s*([\d.,]+)", texto_pdf)
-                            if match_convenio_farm:
-                                convenio_farmacia = float(match_convenio_farm.group(1).replace(".", "").replace(",", "."))
-                            else:
-                                convenio_farmacia = 0
-                            print(f"Convenio Farmacia: {convenio_farmacia}")
-
-                            # DESCONTO ADIANTAMENTO SALARIAL
-                            match_adiant_salarial = search(r"\d{3}\s*DESCONTO ADIANTAMENTO SALARIAL\s*([\d.,]+)", texto_pdf)
-                            if match_adiant_salarial:
-                                adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
-                            else: 
-                                adiant_salarial = 0
-                            if adiant_salarial == 0:
-                                match_adiant_salarial = search(r"\d{3}\s*DESC.ADIANT.SALARIAL\s*([\d.,]+)", texto_pdf)
-                                if match_adiant_salarial:
-                                    adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
-                                else: 
-                                    adiant_salarial = 0
-                            print(f"Adiantamento Salarial: {adiant_salarial}")
-                            input('Pressione Enter para continuar...')
-
-                            # NUMERO DE EMPREGADOS
-                            match_demitido = search(r"No. Empregados: Demitido:\s*(\d+)", texto_pdf)
-                            if match_demitido:
-                                demitido = match_demitido.group(1)
-                                match_num_empregados = search(r"No. Empregados: Demitido:\s+" + demitido + 
-                                                                r"\s*(\d+)", texto_pdf)
-                                if match_num_empregados:
-                                    num_empregados = match_num_empregados.group(1)
-                                else: 
-                                    num_empregados = 0 
-                            else:
-                                num_empregados = 0
-
-                            # NUMERO DE ESTAGIARIOS
-                            match_transferido = search(r"No. Estagiários: Transferido:\s*(\d+)", texto_pdf)
-                            if match_transferido:
-                                transferido = match_transferido.group(1)
-                                match_num_estagiarios = search(r"No. Estagiários: Transferido:\s+" + transferido + 
-                                                                r"\s*(\d+)", texto_pdf)
-                                if match_num_estagiarios:
-                                    num_estagiarios = match_num_estagiarios.group(1)
-                                else: 
-                                    num_estagiarios = 0
-                            else:
-                                num_estagiarios = 0
-
-                            # TRABALHANDO
-                            match_ferias = search(r"Trabalhando: Férias:\s*(\d+)", texto_pdf)
-                            if match_ferias:
-                                ferias = match_ferias.group(1)
-                                match_trabalhando = search(r"Trabalhando: Férias:\s+" + ferias + r"\s*(\d+)", texto_pdf)
-                                if match_trabalhando:
-                                    trabalhando = match_trabalhando.group(1)
-                                else:
-                                    trabalhando = 0
-                            else:
-                                trabalhando = 0
-
-                            # SALARIO CONTRIBUIÇÃO EMPREGADOS
-                            match_salario_contri_empregados = search(r"Salário contribuição empregados:\s*([\d.,]+)", texto_pdf)
-                            if  match_salario_contri_empregados:
-                                salario_contri_empregados = float(match_salario_contri_empregados
-                                                                .group(1).replace(".", "").replace(",", "."))
-                            else: 
-                                salario_contri_empregados = 0
-
-                            # SALARIO CONTRIBUIÇÃO CONTRIBUINTES
-                            match_salario_contri_contribuintes = search(r"Salário contribuição contribuintes:\s*([\d.,]+)", 
-                                                                        texto_pdf)
-                            if  match_salario_contri_contribuintes:
-                                salario_contri_contribuintes = float(match_salario_contri_contribuintes
-                                                                    .group(1).replace(".", "").replace(",", "."))
-                            else:
-                                salario_contri_contribuintes = 0
-                            
-                            # SOMA DOS SALARIOS
-                            soma_salarios_provdt = salario_contri_empregados + salario_contri_contribuintes
-
-                            # VALOR DO INSS
-                            match_inss = search(r"Total INSS:\s*([\d.,]+)", texto_pdf)
-                            if match_inss:
-                                inss = float(match_inss.group(1).replace(".", "").replace(",", "."))
-                            else:
-                                inss = 0
-
-                            # VALOR DO FGTS
-                            match_fgts = search(r"Valor do FGTS:\s*([\d.,]+)", texto_pdf)
-                            if  match_fgts:
-                                fgts = float(match_fgts.group(1).replace(".", "").replace(",", "."))
-                            else:
-                                fgts = 0
-
-                            # VALOR DO IRRF
-                            match_base_iss = search(r"([\d.,]+)\s+Valor Total do IRRF: Base ISS:", texto_pdf)
-                            if match_base_iss:
-                                base_iss = match_base_iss.group(1)
-                                match_irrf = search(r"([\d.,]+)\s+" + base_iss + r"\s+Valor Total do IRRF: Base ISS:", texto_pdf)
-                                if match_irrf:
-                                    irrf = float(match_irrf.group(1).replace(".", "").replace(",", "."))
-                                else:
-                                    irrf = 0
-                            else:
-                                irrf = 0
-
-                            # LÍQUIDO CENTRO DE CUSTO - entra na coluna salarios a pagar
-                            match_liquido = search(r"Líquido Centro de Custo:\s*([\d.,]+)", texto_pdf)
-                            if  match_liquido:
-                                liquido_centro_custo = float(match_liquido.group(1).replace(".", "").replace(",", "."))
-                            else:
-                                liquido_centro_custo = 0
-
-                            # INSERÇÃO DE DADOS NO BANCO
-                            query_update_valores = ler_sql('sql/atualiza_valores_extrato.sql')
-                            values_update_valores = (convenio_farmacia, adiant_salarial, num_empregados, 
-                                                        num_estagiarios, trabalhando, salario_contri_empregados, 
-                                                        salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, 
-                                                        irrf, liquido_centro_custo, cliente_id, cod_centro_custo, int(mes), ano
-                                                        )
-                            with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                                cursor.execute(query_update_valores, values_update_valores)
-                                conn.commit()
-                            caminho_pdf = Path(extrato)
-                            if not nome_extrato.__contains__(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{ano}.{mes}"):
-                                novo_nome_extrato = caminho_pdf.with_name(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S").strip()}_{ano}.{mes}.pdf")
-                                caminho_pdf_mod = caminho_pdf.rename(novo_nome_extrato)
-                            else:
-                                caminho_pdf_mod = caminho_pdf
-                            caminho_destino = Path(caminho_sub_pasta_cliente)
-                            caminho_pasta_mae = Path(caminho_destino / caminho_pdf_mod.name)
-                            copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
-                            move(caminho_pdf_mod, caminho_pasta_mae)
-                    else:
-                        print(f"Cliente não encontrado ou inativo: {nome_centro_custo}\n")
+                            print(f"Não existem faturas para o mes {mes} e ano {ano} para o cliente {nome_centro_custo}!\n")
+                else:
+                    print(f"Não existem extratos para refazer!\n")
     except Exception as error:
         if error.args == ("'NoneType' object is not iterable",):
             print("O diretório informado não foi especificado!")
@@ -785,17 +866,36 @@ def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_r
             cliente = procura_cliente_por_id(cliente_id, db_conf)
             if cliente and cliente[7] == True:
                 nome_pasta_cliente = procura_pasta_cliente(cliente[1], lista_dir_clientes)
+
+                if not nome_pasta_cliente:
+                    print(f"Pasta do cliente {cliente[1]} não encontrada!")
+                    input()
+                    continue
+
                 sub_pastas_clientes = listagem_pastas(nome_pasta_cliente)
-                for sub_pasta in sub_pastas_clientes:
-                    if f"{ano}-{mes}" in sub_pasta:
-                        valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
-                        if valores_financeiro:
-                            print(f"Refazendo fatura para o cliente {cliente[1]} no mes {mes} e ano {ano}")
-                            cria_fatura(cliente_id, nome_pasta_cliente, sub_pasta, valores_financeiro, modelo_fatura)
-                        else: 
-                            print("Cliente não possui valores para gerar fatura!")
-                    else:
-                        print(f"a pasta {ano}-{mes} não existe para o cliente {cliente[1]}! ")
+                print(sub_pastas_clientes)
+                input()
+
+                if not sub_pastas_clientes:
+                    print(f"Pasta do cliente {cliente[1]} vazia!")
+                    input()
+                    continue
+
+                sub_pasta = None
+
+                for sub_pasta_cliente in sub_pastas_clientes:
+                    if f"{ano}-{mes}" == Path(sub_pasta_cliente).name:
+                        sub_pasta = sub_pasta_cliente
+
+                if sub_pasta:
+                    valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
+                    if valores_financeiro:
+                        print(f"Refazendo fatura para o cliente {cliente[1]} no mes {mes} e ano {ano}")
+                        cria_fatura(cliente_id, cliente[1], sub_pasta, valores_financeiro, mes, ano, modelo_fatura)
+                    else: 
+                        print("Cliente não possui valores para gerar fatura!")
+                else:
+                    print(f"A pasta {ano}-{mes} não existe para o cliente {cliente[1]}!")
             else:
                 print(f"Cliente não encontrado ou inativo: {cliente[1]}\n")
     except Exception as error:
@@ -853,15 +953,54 @@ def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer):
         else:
             print(f"Nenhuma empresa encontrada para o ID {cliente_id}!")
  
-def zerar_valores(mes, ano, lista_clientes):
+def zerar_valores(mes, ano, lista_clientes, dir_extratos):
     for cliente in lista_clientes:
-        print(f"Zerando valores do cliente {cliente} para o mes {mes} e ano {ano}")
-        query_zera_valores = ler_sql("sql/zerar_valores.sql")
-        values_zera_valores = (mes, ano, cliente)
-        with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-            cursor.execute(query_zera_valores, values_zera_valores)
-            conn.commit()
+        try:
+            pasta_faturas = listagem_pastas(dir_extratos)
+            if pasta_faturas:
+                for pasta in pasta_faturas:
+                    pasta_novos_extratos = Path(pasta) if Path(pasta).is_dir() and Path(pasta).name.find(f"novos_extratos") == 0 else None
 
+                if pasta_novos_extratos and pasta_novos_extratos.is_dir():
+                    extratos = listagem_arquivos(pasta_novos_extratos)
+                    if extratos:
+                        for extrato in extratos:
+                            nome_extrato = pega_nome(extrato)
+                            texto_pdf = extract_text_pdf(extrato)
+
+                            # Nome do Centro de Custo
+                            match_centro_custo = search(r"C\.Custo:\s*(.*)", texto_pdf)
+                            if match_centro_custo:
+                                nome_centro_custo = match_centro_custo.group(1).replace("í", "i").replace("ó", "o")
+                                partes = nome_centro_custo.split(" - ", 1)
+                                if len(partes) > 1:
+                                    nome_centro_custo_mod = partes[1].strip()
+                                    cod_centro_custo = partes[0].strip()
+                            
+                            cliente_db_extrato = procura_cliente(nome_centro_custo_mod, db_conf)
+
+                            if not cliente_db_extrato:
+                                print(f"Cliente {nome_centro_custo_mod} não encontrado!")
+                                continue
+
+                            cliente_id = int(cliente_db_extrato[0])
+                            cliente_nome = str(cliente_db_extrato[1])
+                            
+                            if cliente_id == cliente:
+                                # Zerando valores
+                                print(f"Zerando valores do cliente {cliente_nome} para o mes {mes} e ano {ano}")
+                                query_zera_valores = ler_sql("sql/zerar_valores.sql")
+                                values_zera_valores = (mes, ano, cliente)
+                                with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
+                                    cursor.execute(query_zera_valores, values_zera_valores)
+                                    conn.commit()
+                    else:
+                        print(f"Nenhum extrato encontrada para o mes {mes} e ano {ano}!")
+                else:
+                    print(f"Nenhuma pasta de extratos encontrada para refazer o mes {mes} e ano {ano}!")
+        except Exception as error:
+            print(f"Erro ao zerar os valores: {error}")
+            input("Pressione Enter para prosseguir para o proximo cliente...")
 
 # ==================CAIXA DE DIALOGO INICIAL============================
 app = Flask(__name__)
@@ -902,9 +1041,9 @@ class execute(Resource):
         if rotina == "1. Organizar Extratos":
             organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales_sst, planilha_reembolsos)
             gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura)
-            gera_boleto(mes, ano, lista_dir_clientes)
-            envia_arquivos(mes, ano, lista_dir_clientes)
-            sucesso = True
+            #gera_boleto(mes, ano, lista_dir_clientes)
+            #envia_arquivos(mes, ano, lista_dir_clientes)
+            #sucesso = True
         elif rotina == "2. Gerar Fatura Detalhada":
             gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura)
             gera_boleto(mes, ano, lista_dir_clientes)
@@ -919,14 +1058,28 @@ class execute(Resource):
             sucesso = True
         elif rotina == "5. Refazer Processo":
             if len(clientes) > 0:
-                zerar_valores(mes, ano, clientes)
-                reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales_sst, planilha_reembolsos)
-                refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes)
-                refazer_boleto(mes, ano, lista_dir_clientes, clientes)
-                #input()
-                #envia_arquivos(mes, ano, lista_dir_clientes)
-                sucesso = True
-            sucesso = False
+                clientes = [int(id) for id in clientes]
+                clientes_validos = valida_clientes(clientes, dir_extratos)
+                clientes_invalidos = list(set(clientes) - set(clientes_validos))
+
+                if len(clientes_validos) > 0:
+                    zerar_valores(mes, ano, clientes_validos, dir_extratos)
+                    reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes_validos)
+                    refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes_validos)
+                    #refazer_boleto(mes, ano, lista_dir_clientes, clientes_validos)
+                    #input()
+                    #envia_arquivos(mes, ano, lista_dir_clientes)
+                    sucesso = True
+                    print("Processo finalizado com sucesso!")
+                    if len(clientes_invalidos) > 0:
+                        print(f"Os seguintes clientes não continham extratos à refazer: {clientes_invalidos}")
+                    input("Pressione ENTER para encerrar o robô...")
+                else:
+                    print("Nenhum cliente valido, encerrando o robô...")
+                    sucesso = False
+            else:
+                print("Nenhum cliente solicitado, encerrando o robô...")
+                sucesso = False
         else:
             print("Nenhuma rotina selecionada, encerrando o robô...")
             sucesso = False
