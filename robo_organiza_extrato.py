@@ -1041,9 +1041,9 @@ class execute(Resource):
         if rotina == "1. Organizar Extratos":
             organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales_sst, planilha_reembolsos)
             gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura)
-            #gera_boleto(mes, ano, lista_dir_clientes)
-            #envia_arquivos(mes, ano, lista_dir_clientes)
-            #sucesso = True
+            gera_boleto(mes, ano, lista_dir_clientes)
+            envia_arquivos(mes, ano, lista_dir_clientes)
+            sucesso = True
         elif rotina == "2. Gerar Fatura Detalhada":
             gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura)
             gera_boleto(mes, ano, lista_dir_clientes)
@@ -1066,9 +1066,8 @@ class execute(Resource):
                     zerar_valores(mes, ano, clientes_validos, dir_extratos)
                     reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes_validos)
                     refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes_validos)
-                    #refazer_boleto(mes, ano, lista_dir_clientes, clientes_validos)
-                    #input()
-                    #envia_arquivos(mes, ano, lista_dir_clientes)
+                    refazer_boleto(mes, ano, lista_dir_clientes, clientes_validos)
+                    envia_arquivos(mes, ano, lista_dir_clientes)
                     sucesso = True
                     print("Processo finalizado com sucesso!")
                     if len(clientes_invalidos) > 0:
