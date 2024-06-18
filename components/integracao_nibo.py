@@ -114,7 +114,6 @@ def agendar_recebimento(cliente, valor, mes, ano):
             json_boleto = {
                 "accountId": NIBO_AUTOMACAO_ID,
                 "scheduleId": response_data_agendamento,
-                "value": valor,
                 "dueDate": data_vencimento,
                 "items": [{
                     "description": "Sem detalhamento",
