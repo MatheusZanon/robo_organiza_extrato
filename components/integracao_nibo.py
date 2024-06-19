@@ -233,7 +233,6 @@ def download_boleto_recebimento(boleto):
             response_data_boleto_agendado_pdf = requests.get(boleto['url'], stream=True)
 
             if response_data_boleto_agendado_pdf.status_code == 200 and response_data_boleto_agendado_pdf.headers.get('Content-Type') == 'application/pdf':
-                downloads = os.path.expanduser("~") + "\\Downloads"
                 arquivo = f"{get_download_path()}\\boleto.pdf"
                 with open(arquivo, 'wb') as file:
                     file.write(response_data_boleto_agendado_pdf.content)
@@ -248,19 +247,4 @@ def download_boleto_recebimento(boleto):
     except Exception as error:
         print(f"Erro ao baixar o boleto: {error}")
         input()
-        return False
-
-
-    NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
-    NIBO_API_TOKEN = os.getenv('NIBO_API_TOKEN')
-    NIBO_ORGANIZATION = os.getenv('NIBO_ORGANIZATION')
-
-    try:
-        response = requests.delete(f"{NIBO_API_BASE_URL}/empresas/v1/schedules/debit/{id_agendamento}?organization={NIBO_ORGANIZATION}&ApiToken={NIBO_API_TOKEN}")
-        if response.status_code == 204:
-            return True
-        else:
-            return False
-    except Exception as e:
-        print(f"Erro ao cancelar agendamento: {e}")
         return False
