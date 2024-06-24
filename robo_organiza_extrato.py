@@ -48,16 +48,11 @@ corpo_email = os.getenv('CORPO_EMAIL')
 
 # ==================== MÉTODOS DE AUXÍLIO====================================
 def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_financeiro, mes, ano, modelo_fatura):
-    print(f"Gerando fatura para o cliente {nome_cliente} no mes {mes} e ano {ano}")
     caminho_sub_pasta = Path(caminho_sub_pasta_cliente)
     nome_fatura = f"Fatura_Detalhada_{nome_cliente}_{ano}.{mes}.xlsx"
     caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"     
-    print(caminho_sub_pasta, "\n", nome_fatura, "\n", caminho_fatura)
-    input()
-
     copy(modelo_fatura, caminho_sub_pasta / nome_fatura)
-    print("Copia feita com sucesso!")
-    input()
+
     try:
         # FORMATANDO A FATURA                                       
         workbook = load_workbook(caminho_fatura)
@@ -200,21 +195,15 @@ def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_fin
 
         # GERANDO PDF DA FATURA
         try:
-            print("Terminada a formatação da fatura, gerando pdf...")
             excel = win32.gencache.EnsureDispatch('Excel.Application')
             excel.Visible = True
-            print("Abrindo fatura.")
-            input("Pressione ENTER para continuar.")
             wb = excel.Workbooks.Open(caminho_fatura)
             ws = wb.Worksheets[f"{mes}.{ano}"]
             sleep(3)
 
-            print("Exportando PDF.")
-            input("Pressione ENTER para continuar.")
             ws.ExportAsFixedFormat(0, caminho_sub_pasta_cliente + f"\\Fatura_Detalhada_{nome_cliente}_{ano}.{mes}")
             wb.Close()
             excel.Quit()
-            print("Inserindo valores no banco.")
             query_fatura = ler_sql('sql/registra_valores_fatura.sql')
             with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
                 cursor.execute(query_fatura, (percent_human, eco_mensal, eco_liquida, total_fatura, cliente_id, mes, ano))
@@ -243,7 +232,6 @@ def copia_boleto_baixado(nome_cliente, mes, ano, pasta_cliente):
             print("Arquivo de boleto não encontrado!")
     except Exception as error:
         print(f"Erro ao copiar o arquivo: {error}")
-        input("Pressione ENTER para sair...")
 
 def valida_clientes(clientes, dir_extratos) -> list[int]:
     clientes_validos: list[int] = []
@@ -277,7 +265,7 @@ def valida_clientes(clientes, dir_extratos) -> list[int]:
                                         clientes_validos.append(cliente_id)
                                     break
                             else:
-                                print(f"O arquivo {extrato} não é um arquivo PDF.")
+                                print(f"O arquivo {extrato} não é um PDF.")
                     else:
                         print(f"O cliente {cliente} não possui extratos no diretório {pasta_novos_extratos}.")
             else:
@@ -286,7 +274,6 @@ def valida_clientes(clientes, dir_extratos) -> list[int]:
             print(f"Pasta de faturas não encontrada.")
     except Exception as error:
         print(error)
-        input("Pressione ENTER para sair...")
     return clientes_validos
 
 # ==================== MÉTODOS DE CADA ETAPA DO PROCESSO=======================
@@ -325,7 +312,6 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes):
                             convenio_farmacia = float(match_convenio_farm.group(1).replace(".", "").replace(",", "."))
                         else:
                             convenio_farmacia = 0
-                        print(f"Convenio Farmacia: {convenio_farmacia}")
 
                         # DESCONTO ADIANTAMENTO SALARIAL
                         match_adiant_salarial = search(r"\d{3}\s*DESCONTO ADIANTAMENTO SALARIAL\s*([\d.,]+)", texto_pdf)
@@ -339,8 +325,6 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes):
                                 adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
                             else: 
                                 adiant_salarial = 0
-                        print(f"Adiantamento Salarial: {adiant_salarial}")
-                        input('Pressione Enter para continuar...')
 
                         # NUMERO DE EMPREGADOS
                         match_demitido = search(r"No. Empregados: Demitido:\s*(\d+)", texto_pdf)
@@ -457,7 +441,6 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes):
                                     conn.commit()
                             except Exception as error:
                                 print(f"Erro ao registrar os valores de extrato: {error}")
-                                input()
                         
                         caminho_pdf = Path(extrato)
                         if not nome_extrato.__contains__(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{ano}.{mes}"):
@@ -478,7 +461,6 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes):
 def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
     try:
         pythoncom.CoInitialize()
-        input("Pressione ENTER para iniciar o processo de geração da fatura...")
         for diretorio in lista_dir_clientes:
             pastas_regioes = listagem_pastas(diretorio)
             for pasta_cliente in pastas_regioes:
@@ -585,7 +567,6 @@ def envia_arquivos(mes, ano, lista_dir_clientes):
                                     cliente_email = cliente[4]
                                     valores_extrato = procura_valores(cliente_id, db_conf, mes, ano)
                                     if valores_extrato and valores_extrato[21] == 0 and not cliente_email == None:
-                                        print(f"Fará o envio para o cliente {nome_pasta_cliente}")
                                         enviar_email_com_anexos(f"{cliente_email}, {email_gestor}", f"Documentos de Terceirização - {nome_pasta_cliente}", 
                                                                f"{corpo_email}", anexos)
                                         query_atualiza_anexos = ler_sql("sql/atualiza_anexos_cliente.sql")
@@ -655,7 +636,6 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
                                         convenio_farmacia = float(match_convenio_farm.group(1).replace(".", "").replace(",", "."))
                                     else:
                                         convenio_farmacia = 0
-                                    print(f"Convenio Farmacia: {convenio_farmacia}")
 
                                     # DESCONTO ADIANTAMENTO SALARIAL
                                     match_adiant_salarial = search(r"\d{3}\s*DESCONTO ADIANTAMENTO SALARIAL\s*([\d.,]+)", texto_pdf)
@@ -669,8 +649,6 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
                                             adiant_salarial = float(match_adiant_salarial.group(1).replace(".", "").replace(",", "."))
                                         else: 
                                             adiant_salarial = 0
-                                    print(f"Adiantamento Salarial: {adiant_salarial}")
-                                    input('Pressione Enter para continuar...')
 
                                     # NUMERO DE EMPREGADOS
                                     match_demitido = search(r"No. Empregados: Demitido:\s*(\d+)", texto_pdf)
@@ -793,7 +771,6 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
                                     caminho_destino_relatorios = Path(caminho_destino_relatorios / caminho_pdf_mod.name)
                                     copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
                                     move(caminho_pdf_mod, caminho_destino_relatorios)
-                                    print(f"Extrato salvo: {caminho_pdf_mod.name}\n")
                                     break
                             else:
                                 print(f"{nome_centro_custo} não é o extrato do cliente atual, indo para o próximo!\n")
@@ -816,12 +793,9 @@ def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_r
                 caminho_pasta_cliente = procura_pasta_cliente(cliente[1], lista_dir_clientes)
                 nome_pasta_cliente = pega_nome(caminho_pasta_cliente)
                 if nome_pasta_cliente:
-                    print(nome_pasta_cliente)
                     sub_pastas_clientes = listagem_pastas(caminho_pasta_cliente)
-                    print(sub_pastas_clientes)
                     sub_pasta = None
                     for sub_pasta_cliente in sub_pastas_clientes:
-                        print(sub_pasta_cliente)
                         if f"{ano}-{mes}" == Path(sub_pasta_cliente).name:
                             sub_pasta = sub_pasta_cliente
                     if sub_pasta:
@@ -940,13 +914,13 @@ class execute(Resource):
         if rotina == "1. Organizar Extratos":
             organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes)
             gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura)
-            #gera_boleto(mes, ano, lista_dir_clientes)
-            #envia_arquivos(mes, ano, lista_dir_clientes)
+            gera_boleto(mes, ano, lista_dir_clientes)
+            envia_arquivos(mes, ano, lista_dir_clientes)
             sucesso = True
         elif rotina == "2. Gerar Fatura Detalhada":
             gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura)
-            #gera_boleto(mes, ano, lista_dir_clientes)
-            #envia_arquivos(mes, ano, lista_dir_clientes)
+            gera_boleto(mes, ano, lista_dir_clientes)
+            envia_arquivos(mes, ano, lista_dir_clientes)
             sucesso = True
         elif rotina == "3. Gerar Boletos":
             gera_boleto(mes, ano, lista_dir_clientes)
@@ -960,15 +934,14 @@ class execute(Resource):
                 clientes = [int(id) for id in clientes]
                 clientes_validos = valida_clientes(clientes, dir_extratos)
                 clientes_invalidos = list(set(clientes) - set(clientes_validos))
-                
                 if len(clientes_validos) > 0:
                     zerar_valores(mes, ano, clientes_validos)
                     print("Valores Zerados!", clientes_validos)
                     reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes_validos)
                     print("Extratos Reorganizados!", clientes_validos)
                     refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes_validos)
-                    #refazer_boleto(mes, ano, lista_dir_clientes, clientes_validos)
-                    #envia_arquivos(mes, ano, lista_dir_clientes)
+                    refazer_boleto(mes, ano, lista_dir_clientes, clientes_validos)
+                    envia_arquivos(mes, ano, lista_dir_clientes)
                     sucesso = True
                     print("Processo finalizado com sucesso!")
                     if len(clientes_invalidos) > 0:
