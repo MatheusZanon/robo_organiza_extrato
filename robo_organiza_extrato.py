@@ -68,7 +68,7 @@ def lambda_handler(event, context):
     elif rotina == "5. Refazer Processo":
         if len(clientes) > 0:
             clientes = [int(id) for id in clientes]
-            clientes_validos = valida_clientes(clientes, dir_extratos)
+            clientes_validos = valida_clientes(clientes, dir_extratos, db_conf)
             clientes_invalidos = list(set(clientes) - set(clientes_validos))
             if len(clientes_validos) > 0:
                 zerar_valores(mes, ano, clientes_validos, db_conf)
@@ -104,7 +104,7 @@ def lambda_handler(event, context):
         }
 
 # ==================== MÉTODOS DE AUXÍLIO====================================
-def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_financeiro, mes, ano, modelo_fatura):
+def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_financeiro, db_conf, mes, ano, modelo_fatura):
     caminho_sub_pasta = Path(caminho_sub_pasta_cliente)
     nome_fatura = f"Fatura_Detalhada_{nome_cliente}_{ano}.{mes}.xlsx"
     caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"     
@@ -290,7 +290,7 @@ def copia_boleto_baixado(nome_cliente, mes, ano, pasta_cliente):
     except Exception as error:
         print(f"Erro ao copiar o arquivo: {error}")
 
-def valida_clientes(clientes, dir_extratos) -> list[int]:
+def valida_clientes(clientes, dir_extratos, db_conf) -> list[int]:
     clientes_validos: list[int] = []
     try:
         pasta_faturas = listagem_pastas(dir_extratos)
@@ -543,7 +543,7 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf):
                                 cliente_id = cliente[0]
                                 valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
                                 if valores_financeiro != None:
-                                    cria_fatura(cliente_id, nome_pasta_cliente, sub_pasta, valores_financeiro, mes, ano, modelo_fatura)
+                                    cria_fatura(cliente_id, nome_pasta_cliente, sub_pasta, valores_financeiro, db_conf, mes, ano, modelo_fatura)
                                 else: 
                                     print("Cliente não possui valores para gerar fatura!")
                             else:
@@ -579,8 +579,10 @@ def gera_boleto(mes, ano, lista_dir_clientes, db_conf):
                                 cliente_id = cliente[0]
                                 valores = procura_valores(cliente_id, db_conf, mes, ano)
                                 valor_fatura = valores[20]
+                                empresa = pegar_empresa_por_id(cliente_id)
                                 if valor_fatura:
-                                    recebimento = agendar_recebimento(cliente, valor_fatura, mes, ano)
+                                    print(f"Agendando boleto para {nome_pasta_cliente} no valor de R${valor_fatura}...")
+                                    recebimento = agendar_recebimento(empresa, valor_fatura, mes, ano)
                                     if recebimento:
                                         copia_boleto_baixado(nome_pasta_cliente, mes, ano, caminho_destino)
                                 else:
@@ -857,7 +859,7 @@ def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_r
                     if sub_pasta:
                         valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
                         if valores_financeiro:
-                            cria_fatura(cliente_id, nome_pasta_cliente, sub_pasta, valores_financeiro, mes, ano, modelo_fatura)
+                            cria_fatura(cliente_id, nome_pasta_cliente, sub_pasta, valores_financeiro, db_conf, mes, ano, modelo_fatura)
                         else: 
                             print("Cliente não possui valores para gerar fatura!")
                     else:

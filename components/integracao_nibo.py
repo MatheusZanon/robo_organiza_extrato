@@ -33,9 +33,16 @@ def pegar_empresa_por_id(id):
     if cliente:
         cnpj = cliente[2]
         cpf = cliente[3]
-
+        if cnpj:
+            cnpj_formatado = str(cnpj.replace('.', '').replace('/', '').replace('-', ''))
+        else:
+            cnpj_formatado = ''
+        if cpf:
+            cpf_formatado = str(cpf.replace('.', '').replace('/', '').replace('-', ''))
+        else:
+            cpf_formatado = ''
         try:
-            response = requests.get(f"{NIBO_API_BASE_URL}/empresas/v1/customers/?organization={NIBO_ORGANIZATION}&$filter=document/number eq '{cnpj or cpf}'&ApiToken={NIBO_API_TOKEN}")
+            response = requests.get(f"{NIBO_API_BASE_URL}/empresas/v1/customers/?organization={NIBO_ORGANIZATION}&$filter=document/number eq '{cnpj_formatado or cpf_formatado}'&ApiToken={NIBO_API_TOKEN}")
         except Exception as e:
             print(f"Erro ao buscar empresa: {e}")
 
@@ -43,13 +50,12 @@ def pegar_empresa_por_id(id):
             data = response.json()
             return data['items'][0]
 
-def agendar_recebimento(cliente, valor, mes, ano):
+def agendar_recebimento(empresa, valor, mes, ano):
     NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
     NIBO_API_TOKEN = os.getenv('NIBO_API_TOKEN')
     NIBO_ORGANIZATION = os.getenv('NIBO_ORGANIZATION')
     NIBO_CATEGORY_ID = os.getenv('NIBO_CATEGORY_ID')
     NIBO_AUTOMACAO_ID = os.getenv('NIBO_AUTOMACAO_ID')
-
     # Verificar se o valor é um float, int ou string representando um número
     try:
         valor = float(valor)
@@ -93,11 +99,8 @@ def agendar_recebimento(cliente, valor, mes, ano):
     
     description_agendamento = f"Salários a pagar, FGTS, GPS, provisão direitos trabalhistas, vale transporte e taxa de administração de pessoas {mes:02d}/{ano}"
 
-    print(f"Registrar Agendamento | {description_agendamento} de valor {valor} para {cliente['name']}")
-    input(f"Pressione Enter para prosseguir com o agendamento...")
-
     json_agendamento = {
-        "stakeholderId": str(cliente['id']),
+        "stakeholderId": str(empresa['id']),
         "description": description_agendamento,
         "value": valor,
         "scheduleDate": today_datetime,
@@ -108,7 +111,6 @@ def agendar_recebimento(cliente, valor, mes, ano):
 
     try:
         response_agendamento = requests.post(f"{NIBO_API_BASE_URL}/empresas/v1/schedules/credit/?organization={NIBO_ORGANIZATION}&ApiToken={NIBO_API_TOKEN}", json=json_agendamento)
-
         if response_agendamento.status_code == 200:
             response_data_agendamento = response_agendamento.json()
             json_boleto = {
