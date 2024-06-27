@@ -522,8 +522,10 @@ def gera_boleto(mes, ano, lista_dir_clientes):
                                 cliente_id = cliente[0]
                                 valores = procura_valores(cliente_id, db_conf, mes, ano)
                                 valor_fatura = valores[20]
+                                empresa = pegar_empresa_por_id(cliente_id)
                                 if valor_fatura:
-                                    recebimento = agendar_recebimento(cliente, valor_fatura, mes, ano)
+                                    print(f"Agendando boleto para {nome_pasta_cliente} no valor de R${valor_fatura}...")
+                                    recebimento = agendar_recebimento(empresa, valor_fatura, mes, ano)
                                     if recebimento:
                                         copia_boleto_baixado(nome_pasta_cliente, mes, ano, caminho_destino)
                                 else:
