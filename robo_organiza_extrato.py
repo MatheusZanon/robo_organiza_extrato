@@ -1,50 +1,107 @@
 # =========================IMPORTAÇÕES DE BIBLIOTECAS E COMPONENTES========================
-from components.importacao_diretorios_windows import *
-from components.extract_text_pdf import extract_text_pdf
-from components.importacao_caixa_dialogo import DialogBox
-from components.checar_ativacao_google_drive import checa_google_drive
-from components.configuracao_db import configura_db, ler_sql
-from components.procura_cliente import procura_cliente, procura_cliente_por_id, procura_clientes
-from components.procura_valores import procura_valores, procura_valores_com_codigo, procura_salarios_com_codigo
-from components.procura_elementos_web import procura_elemento, procura_todos_elementos, encontrar_elemento_shadow_root
-from components.configuracao_selenium_drive import configura_selenium_driver
-from components.enviar_emails import enviar_email_com_anexos
-from components.integracao_nibo import pegar_empresa_por_id, pegar_agendamento_de_pagamento_cliente_por_data, agendar_recebimento, cancelar_agendamento_de_recebimento
-import tkinter as tk
+import os
+import json
+import pythoncom
+from time import sleep
+import win32com.client as win32
 import mysql.connector
 from re import search
 from pathlib import Path
 from shutil import copy, move
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, NamedStyle
-import win32com.client as win32
-from dotenv import load_dotenv
-import os
-import pythoncom
-from time import sleep, time
-from datetime import date
-import pandas as pd
-from flask import Flask, request
-from flask_restful import Resource, Api, reqparse
+from components.importacao_diretorios_windows import *
+from components.extract_text_pdf import extract_text_pdf
+from components.configuracao_db import configura_db, ler_sql
+from components.procura_cliente import procura_cliente, procura_cliente_por_id
+from components.procura_valores import procura_valores, procura_valores_com_codigo, procura_salarios_com_codigo
+from components.enviar_emails import enviar_email_com_anexos
+from components.integracao_nibo import pegar_empresa_por_id, pegar_agendamento_de_pagamento_cliente_por_data, agendar_recebimento, cancelar_agendamento_de_recebimento
 
+def lambda_handler(event, context):
+    # Parsear os parâmetros da requisição
+    body = json.loads(event['body'])
+    mes = body['mes']
+    ano = body['ano']
+    particao = body['particao']
+    rotina = body['rotina']
+    clientes = body.get('clientes', [])
 
-# ================= CARREGANDO VARIÁVEIS DE AMBIENTE======================
-load_dotenv()
+    mes = int(mes)
+    if mes < 10:
+        mes = f"0{mes}"
 
-# =====================CONFIGURAÇÂO DO BANCO DE DADOS======================
-db_conf = configura_db()
+    # ========================PARAMETROS INICIAIS==============================
+    dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
+    dir_clientes_manaus = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Manaus"
+    lista_dir_clientes = [dir_clientes_itaperuna, dir_clientes_manaus]
+    dir_extratos = f"{particao}:\\Meu Drive\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{ano}_{mes}"
+    modelo_fatura = Path(f"{particao}:\\Meu Drive\\Arquivos_Automacao\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
+    sucesso = False
 
-# =============CHECANDO SE O GOOGLE FILE STREAM ESTÁ INICIADO NO SISTEMA==============
-checa_google_drive()
+    # =====================CONFIGURAÇÂO DO BANCO DE DADOS======================
+    db_conf = configura_db()
 
-chrome_options, servico = configura_selenium_driver()
+    # ================CONFIGURAÇÃO DAS VARIAVEIS DE AMBIENTE=====================
+    email_gestor = os.getenv('EMAIL_GESTOR')
+    corpo_email = os.getenv('CORPO_EMAIL')
 
-# ================CONFIGURAÇÃO DAS VARIAVEIS DE AMBIENTE=====================
-automacao_email = os.getenv('SELENIUM_USER')
-automacao_senha = os.getenv('SELENIUM_PASSWORD')
-email_gestor = os.getenv('EMAIL_GESTOR')
-corpo_email = os.getenv('CORPO_EMAIL')
+    # ========================LÓGICA DE EXECUÇÃO DO ROBÔ===========================
+    if rotina == "1. Organizar Extratos":
+        organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, db_conf)
+        gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf)
+        gera_boleto(mes, ano, lista_dir_clientes, db_conf)
+        envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
+        sucesso = True
+    elif rotina == "2. Gerar Fatura Detalhada":
+        gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf)
+        gera_boleto(mes, ano, lista_dir_clientes, db_conf)
+        envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
+        sucesso = True
+    elif rotina == "3. Gerar Boletos":
+        gera_boleto(mes, ano, lista_dir_clientes, db_conf)
+        envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
+        sucesso = True
+    elif rotina == "4. Enviar Arquivos":
+        envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
+        sucesso = True
+    elif rotina == "5. Refazer Processo":
+        if len(clientes) > 0:
+            clientes = [int(id) for id in clientes]
+            clientes_validos = valida_clientes(clientes, dir_extratos)
+            clientes_invalidos = list(set(clientes) - set(clientes_validos))
+            if len(clientes_validos) > 0:
+                zerar_valores(mes, ano, clientes_validos, db_conf)
+                print("Valores Zerados!", clientes_validos)
+                reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes_validos, db_conf)
+                print("Extratos Reorganizados!", clientes_validos)
+                refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes_validos, db_conf)
+                refazer_boleto(mes, ano, lista_dir_clientes, clientes_validos, db_conf)
+                envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
+                sucesso = True
+                print("Processo finalizado com sucesso!")
+                if len(clientes_invalidos) > 0:
+                    print(f"Os seguintes clientes não continham extratos à refazer: {clientes_invalidos}")
+            else:
+                print("Nenhum cliente valido, encerrando o robô...")
+                sucesso = True
+        else:
+            print("Nenhum cliente solicitado, encerrando o robô...")
+            sucesso = False
+    else:
+        print("Nenhuma rotina selecionada, encerrando o robô...")
+        sucesso = False
 
+    if sucesso:
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'message': 'Arquivos de Terceirização gerados com sucesso'})
+        }
+    else:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'message': 'Erro ao gerar arquivos'})
+        }
 
 # ==================== MÉTODOS DE AUXÍLIO====================================
 def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_financeiro, mes, ano, modelo_fatura):
@@ -277,7 +334,7 @@ def valida_clientes(clientes, dir_extratos) -> list[int]:
     return clientes_validos
 
 # ==================== MÉTODOS DE CADA ETAPA DO PROCESSO=======================
-def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes):
+def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, db_conf):
     try:
         pasta_faturas = listagem_pastas(dir_extratos)
         for pasta in pasta_faturas:
@@ -458,7 +515,7 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes):
         else:
             print(f"O sistema retornou um erro: {error}")
 
-def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
+def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf):
     try:
         pythoncom.CoInitialize()
         for diretorio in lista_dir_clientes:
@@ -496,7 +553,7 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
     finally:
         pythoncom.CoUninitialize()
 
-def gera_boleto(mes, ano, lista_dir_clientes):
+def gera_boleto(mes, ano, lista_dir_clientes, db_conf):
     try:
         for diretorio in lista_dir_clientes:
             pastas_regioes = listagem_pastas(diretorio)
@@ -534,7 +591,7 @@ def gera_boleto(mes, ano, lista_dir_clientes):
         print(error)
     print("PROCESSO DE BOLETO ENCERRADO!")
 
-def envia_arquivos(mes, ano, lista_dir_clientes):
+def envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email):
     try:  
         input("APERTE QUALQUER TECLA PARA ENVIAR OS ARQUIVOS")
         for diretorio in lista_dir_clientes:
@@ -590,9 +647,8 @@ def envia_arquivos(mes, ano, lista_dir_clientes):
     except Exception as error:
         print (error)
 
-
 # ================== MÉTODOS PARA REFAZER O PROCESSO ==================
-def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
+def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes, db_conf):
     try:
         pasta_faturas = listagem_pastas(dir_extratos)
         pasta_novos_extratos = None
@@ -784,7 +840,7 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
         else:
             print(f"O sistema retornou um erro: {error}")
 
-def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_refazer):
+def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_refazer, db_conf):
     try:
         pythoncom.CoInitialize()
         for cliente_id in lista_clientes_refazer:
@@ -815,7 +871,7 @@ def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_r
     finally:
         pythoncom.CoUninitialize()
 
-def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer):
+def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer, db_conf):
     for cliente_id in lista_clientes_refazer:
         empresa = pegar_empresa_por_id(cliente_id)
         if empresa:
@@ -828,7 +884,6 @@ def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer):
 
                     if not valores_financeiro:
                         print(f"Valores de financeiro não encontrados para o cliente {empresa['name']}!")
-                        input("Pressione Enter para prosseguir para o proximo cliente...")
                         continue
 
                     recebimento = agendar_recebimento(empresa, valores_financeiro[20], mes, ano)
@@ -855,7 +910,6 @@ def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer):
                                 print(f"Cliente {cliente_db[1]} não encontrado ou inativo!")
                         except Exception as error:
                             print(f"Erro ao salvar o boleto na pasta do cliente: {error}")
-                            input("Pressione Enter para prosseguir para o proximo cliente...")
                     else:
                         print(f"Recebimento {recebimento['idAgendamento']} não pode ser agendado!")
                 else:
@@ -865,7 +919,7 @@ def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer):
         else:
             print(f"Nenhuma empresa encontrada para o ID {cliente_id}!")
  
-def zerar_valores(mes, ano, lista_clientes):
+def zerar_valores(mes, ano, lista_clientes, db_conf):
     try:
         for cliente in lista_clientes:
             query_zera_valores = ler_sql("sql/zerar_valores.sql")
@@ -875,102 +929,3 @@ def zerar_valores(mes, ano, lista_clientes):
                 conn.commit()
     except Exception as error:
         print(f"Erro ao zerar os valores: {error}")
-        input("Pressione Enter para prosseguir para o proximo cliente...")
-
-# ==================CAIXA DE DIALOGO INICIAL============================
-app = Flask(__name__)
-api = Api(app)
-
-class execute(Resource):
-    def post(self):
-        print("Requisição Recebida!")
-        parser = reqparse.RequestParser()
-        parser.add_argument('mes', type=int, required=True)
-        parser.add_argument('ano', type=int, required=True)
-        parser.add_argument('particao', required=True)
-        parser.add_argument('rotina', required=True)
-        parser.add_argument('clientes', type=list, location='json', required=False)
-        json = parser.parse_args()
-
-        mes = json['mes']
-        ano = json['ano']
-        particao = json['particao']
-        rotina = json['rotina']
-        clientes = json['clientes'] if json['clientes'] is not None else []
-
-        mes = int(mes)
-        if mes < 10:
-            mes = f"0{mes}"
-
-        # ========================PARAMETROS INICIAS==============================
-        dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
-        dir_clientes_manaus = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Manaus"
-        lista_dir_clientes = [dir_clientes_itaperuna, dir_clientes_manaus]
-        dir_extratos = f"{particao}:\\Meu Drive\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{ano}_{mes}"
-        modelo_fatura = Path(f"{particao}:\\Meu Drive\\Arquivos_Automacao\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
-        sucesso = False
-
-        # ========================LÓGICA DE EXECUÇÃO DO ROBÔ===========================
-        if rotina == "1. Organizar Extratos":
-            organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes)
-            gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura)
-            gera_boleto(mes, ano, lista_dir_clientes)
-            envia_arquivos(mes, ano, lista_dir_clientes)
-            sucesso = True
-        elif rotina == "2. Gerar Fatura Detalhada":
-            gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura)
-            gera_boleto(mes, ano, lista_dir_clientes)
-            envia_arquivos(mes, ano, lista_dir_clientes)
-            sucesso = True
-        elif rotina == "3. Gerar Boletos":
-            gera_boleto(mes, ano, lista_dir_clientes)
-            envia_arquivos(mes, ano, lista_dir_clientes)
-            sucesso = True
-        elif rotina == "4. Enviar Arquivos":
-            envia_arquivos(mes, ano)
-            sucesso = True
-        elif rotina == "5. Refazer Processo":
-            if len(clientes) > 0:
-                clientes = [int(id) for id in clientes]
-                clientes_validos = valida_clientes(clientes, dir_extratos)
-                clientes_invalidos = list(set(clientes) - set(clientes_validos))
-                if len(clientes_validos) > 0:
-                    zerar_valores(mes, ano, clientes_validos)
-                    print("Valores Zerados!", clientes_validos)
-                    reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes_validos)
-                    print("Extratos Reorganizados!", clientes_validos)
-                    refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes_validos)
-                    refazer_boleto(mes, ano, lista_dir_clientes, clientes_validos)
-                    envia_arquivos(mes, ano, lista_dir_clientes)
-                    sucesso = True
-                    print("Processo finalizado com sucesso!")
-                    if len(clientes_invalidos) > 0:
-                        print(f"Os seguintes clientes não continham extratos à refazer: {clientes_invalidos}")
-                    input("Pressione ENTER para encerrar o robô...")
-                else:
-                    print("Nenhum cliente valido, encerrando o robô...")
-                    sucesso = True
-            else:
-                print("Nenhum cliente solicitado, encerrando o robô...")
-                sucesso = False
-        else:
-            print("Nenhuma rotina selecionada, encerrando o robô...")
-            sucesso = False
-        
-        if sucesso:
-            return {'message': 'Arquivos de Terceirização gerados com sucesso'}, 200
-        else:
-            return {'message': 'Erro ao gerar arquivos'}, 500
-
-class shutdown(Resource):
-    def post(self):
-        try:
-            os._exit(0)
-        except Exception as e:
-            print(f'Erro ao executar o comando de shutdown: {e}')   
-    
-api.add_resource(execute, '/')
-api.add_resource(shutdown, '/shutdown')
-
-if __name__ == "__main__":
-    app.run(debug=True, port=5000)
