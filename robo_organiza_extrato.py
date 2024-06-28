@@ -1,6 +1,8 @@
 # =========================IMPORTAÇÕES DE BIBLIOTECAS E COMPONENTES========================
 import os
 import json
+import boto3
+from botocore.exceptions import ClientError
 import pythoncom
 from time import sleep
 import win32com.client as win32
@@ -10,6 +12,9 @@ from pathlib import Path
 from shutil import copy, move
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, NamedStyle
+from google.auth.transport.requests import Request
+from google.auth import identity_pool
+from googleapiclient.discovery import build
 from components.importacao_diretorios_windows import *
 from components.extract_text_pdf import extract_text_pdf
 from components.configuracao_db import configura_db, ler_sql
@@ -18,92 +23,66 @@ from components.procura_valores import procura_valores, procura_valores_com_codi
 from components.enviar_emails import enviar_email_com_anexos
 from components.integracao_nibo import pegar_empresa_por_id, pegar_agendamento_de_pagamento_cliente_por_data, agendar_recebimento, cancelar_agendamento_de_recebimento
 
-def lambda_handler(event, context):
-    # Parsear os parâmetros da requisição
-    body = json.loads(event['body'])
-    mes = body['mes']
-    ano = body['ano']
-    particao = body['particao']
-    rotina = body['rotina']
-    clientes = body.get('clientes', [])
-
-    mes = int(mes)
-    if mes < 10:
-        mes = f"0{mes}"
-
-    # ========================PARAMETROS INICIAIS==============================
-    dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
-    dir_clientes_manaus = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Manaus"
-    lista_dir_clientes = [dir_clientes_itaperuna, dir_clientes_manaus]
-    dir_extratos = f"{particao}:\\Meu Drive\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{ano}_{mes}"
-    modelo_fatura = Path(f"{particao}:\\Meu Drive\\Arquivos_Automacao\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
-    sucesso = False
-
-    # =====================CONFIGURAÇÂO DO BANCO DE DADOS======================
-    db_conf = configura_db()
-
-    # ================CONFIGURAÇÃO DAS VARIAVEIS DE AMBIENTE=====================
-    email_gestor = os.getenv('EMAIL_GESTOR')
-    corpo_email = os.getenv('CORPO_EMAIL')
-
-    # ========================LÓGICA DE EXECUÇÃO DO ROBÔ===========================
-    if rotina == "1. Organizar Extratos":
-        organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, db_conf)
-        gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf)
-        gera_boleto(mes, ano, lista_dir_clientes, db_conf)
-        envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
-        sucesso = True
-    elif rotina == "2. Gerar Fatura Detalhada":
-        gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf)
-        gera_boleto(mes, ano, lista_dir_clientes, db_conf)
-        envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
-        sucesso = True
-    elif rotina == "3. Gerar Boletos":
-        gera_boleto(mes, ano, lista_dir_clientes, db_conf)
-        envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
-        sucesso = True
-    elif rotina == "4. Enviar Arquivos":
-        envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
-        sucesso = True
-    elif rotina == "5. Refazer Processo":
-        if len(clientes) > 0:
-            clientes = [int(id) for id in clientes]
-            clientes_validos = valida_clientes(clientes, dir_extratos, db_conf)
-            clientes_invalidos = list(set(clientes) - set(clientes_validos))
-            if len(clientes_validos) > 0:
-                zerar_valores(mes, ano, clientes_validos, db_conf)
-                print("Valores Zerados!", clientes_validos)
-                reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes_validos, db_conf)
-                print("Extratos Reorganizados!", clientes_validos)
-                refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes_validos, db_conf)
-                refazer_boleto(mes, ano, lista_dir_clientes, clientes_validos, db_conf)
-                envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
-                sucesso = True
-                print("Processo finalizado com sucesso!")
-                if len(clientes_invalidos) > 0:
-                    print(f"Os seguintes clientes não continham extratos à refazer: {clientes_invalidos}")
-            else:
-                print("Nenhum cliente valido, encerrando o robô...")
-                sucesso = True
-        else:
-            print("Nenhum cliente solicitado, encerrando o robô...")
-            sucesso = False
-    else:
-        print("Nenhuma rotina selecionada, encerrando o robô...")
-        sucesso = False
-
-    if sucesso:
-        return {
-            'statusCode': 200,
-            'body': json.dumps({'message': 'Arquivos de Terceirização gerados com sucesso'})
-        }
-    else:
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'message': 'Erro ao gerar arquivos'})
-        }
 
 # ==================== MÉTODOS DE AUXÍLIO====================================
+def get_secret():
+    secret_name = "GoogleFederationConfig"
+    region_name = "sa-east-1"
+
+    # Create a Secrets Manager client
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError as e:
+        # For a list of exceptions thrown, see
+        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        raise e
+
+    secret = get_secret_value_response['SecretString']
+    return json.loads(secret)
+
+def carregar_credenciais():
+    try:
+        secret_name = "GoogleFederationConfig"
+        secret_json = get_secret(secret_name)
+        
+        credentials = identity_pool.Credentials.from_info(secret_json)
+
+        SCOPES = [os.getenv('SCOPES')]
+        credentials = credentials.with_scopes(SCOPES)
+
+        credentials.refresh(Request())
+        return credentials
+    except Exception as error:
+        print(error)
+
+def autenticacao_google_drive():
+    try:
+        service_name = os.getenv('GOOGLE_CLOUD_SERVICE_NAME')
+        service_version = os.getenv('GOOGLE_CLOUD_SERVICE_VERSION')
+        credentials = carregar_credenciais()
+        drive_service = build(service_name, service_version, credentials=credentials)
+        return drive_service
+    except Exception as error:
+        print(error)
+
+driver_service = autenticacao_google_drive()
+
+def lista_pastas_em_diretorio(folder_id):
+    try:
+        query = f"'{folder_id}' in parents and trashed=false"
+        results = driver_service.files().list(q=query, pageSize=1000, fields="files(id, name)").execute()
+        items = results.get('files', [])
+        return items
+    except Exception as error:
+        print(error)
+
 def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_financeiro, db_conf, mes, ano, modelo_fatura):
     caminho_sub_pasta = Path(caminho_sub_pasta_cliente)
     nome_fatura = f"Fatura_Detalhada_{nome_cliente}_{ano}.{mes}.xlsx"
@@ -931,3 +910,91 @@ def zerar_valores(mes, ano, lista_clientes, db_conf):
                 conn.commit()
     except Exception as error:
         print(f"Erro ao zerar os valores: {error}")
+
+
+def lambda_handler(event, context):
+    # Parsear os parâmetros da requisição
+    body = json.loads(event['body'])
+    mes = body['mes']
+    ano = body['ano']
+    particao = body['particao']
+    rotina = body['rotina']
+    clientes = body.get('clientes', [])
+
+    mes = int(mes)
+    if mes < 10:
+        mes = f"0{mes}"
+
+    # ========================PARAMETROS INICIAIS==============================
+    clientes_itaperuna_id = os.getenv('CLIENTES_ITAPERUNA_ID')
+    clientes_manaus_id = os.getenv('CLIENTES_MANAUS_ID')
+    arquivos_itaperuna = lista_pastas_em_diretorio(clientes_itaperuna_id)
+    arquivos_manaus = lista_pastas_em_diretorio(clientes_manaus_id)
+    lista_dir_clientes = arquivos_itaperuna + arquivos_manaus
+    dir_extratos = os.getenv('EXTRATOS_FOLDER_ID')
+    modelo_fatura = Path("templates\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
+    sucesso = False
+
+    # =====================CONFIGURAÇÂO DO BANCO DE DADOS======================
+    db_conf = configura_db()
+
+    # ================CONFIGURAÇÃO DAS VARIAVEIS DE AMBIENTE=====================
+    email_gestor = os.getenv('EMAIL_GESTOR')
+    corpo_email = os.getenv('CORPO_EMAIL')
+
+    # ========================LÓGICA DE EXECUÇÃO DO ROBÔ===========================
+    if rotina == "1. Organizar Extratos":
+        organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, db_conf)
+        gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf)
+        gera_boleto(mes, ano, lista_dir_clientes, db_conf)
+        envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
+        sucesso = True
+    elif rotina == "2. Gerar Fatura Detalhada":
+        gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf)
+        gera_boleto(mes, ano, lista_dir_clientes, db_conf)
+        envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
+        sucesso = True
+    elif rotina == "3. Gerar Boletos":
+        gera_boleto(mes, ano, lista_dir_clientes, db_conf)
+        envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
+        sucesso = True
+    elif rotina == "4. Enviar Arquivos":
+        envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
+        sucesso = True
+    elif rotina == "5. Refazer Processo":
+        if len(clientes) > 0:
+            clientes = [int(id) for id in clientes]
+            clientes_validos = valida_clientes(clientes, dir_extratos, db_conf)
+            clientes_invalidos = list(set(clientes) - set(clientes_validos))
+            if len(clientes_validos) > 0:
+                zerar_valores(mes, ano, clientes_validos, db_conf)
+                print("Valores Zerados!", clientes_validos)
+                reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes_validos, db_conf)
+                print("Extratos Reorganizados!", clientes_validos)
+                refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes_validos, db_conf)
+                refazer_boleto(mes, ano, lista_dir_clientes, clientes_validos, db_conf)
+                envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email)
+                sucesso = True
+                print("Processo finalizado com sucesso!")
+                if len(clientes_invalidos) > 0:
+                    print(f"Os seguintes clientes não continham extratos à refazer: {clientes_invalidos}")
+            else:
+                print("Nenhum cliente valido, encerrando o robô...")
+                sucesso = True
+        else:
+            print("Nenhum cliente solicitado, encerrando o robô...")
+            sucesso = False
+    else:
+        print("Nenhuma rotina selecionada, encerrando o robô...")
+        sucesso = False
+
+    if sucesso:
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'message': 'Arquivos de Terceirização gerados com sucesso'})
+        }
+    else:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'message': 'Erro ao gerar arquivos'})
+        }
