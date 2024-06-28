@@ -77,9 +77,16 @@ driver_service = autenticacao_google_drive()
 def lista_pastas_em_diretorio(folder_id):
     try:
         query = f"'{folder_id}' in parents and trashed=false"
-        results = driver_service.files().list(q=query, pageSize=1000, fields="files(id, name)").execute()
+        results = driver_service.files().list(q=query, pageSize=80, fields="files(id, name)").execute()
         items = results.get('files', [])
         return items
+    except Exception as error:
+        print(error)
+
+def lista_pastas_subpastas_em_diretorio(folder_id):
+    try:
+        all_files = []
+        folders_to_process = [folder_id]
     except Exception as error:
         print(error)
 
@@ -917,7 +924,6 @@ def lambda_handler(event, context):
     body = json.loads(event['body'])
     mes = body['mes']
     ano = body['ano']
-    particao = body['particao']
     rotina = body['rotina']
     clientes = body.get('clientes', [])
 
