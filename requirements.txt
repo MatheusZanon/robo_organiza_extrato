@@ -10,3 +10,11 @@ mysql-connector-python
 selenium
 python-dotenv
 requests
+
+Flask
+Flask-Cors
+Flask-RESTful
+Flask-SQLAlchemy
+Flask-Login
+Flask-Bcrypt
+Flask-Wtf
