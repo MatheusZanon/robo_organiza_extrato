@@ -936,11 +936,12 @@ class execute(Resource):
                 clientes = [int(id) for id in clientes]
                 clientes_validos = valida_clientes(clientes, dir_extratos)
                 clientes_invalidos = list(set(clientes) - set(clientes_validos))
+                print(f"Valores a serem zerados: {clientes_validos}")
                 if len(clientes_validos) > 0:
                     zerar_valores(mes, ano, clientes_validos)
-                    print("Valores Zerados!", clientes_validos)
+                    print(f"Valores Zerados de {clientes_validos}")
                     reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes_validos)
-                    print("Extratos Reorganizados!", clientes_validos)
+                    print(f"Extratos Reorganizados de {clientes_validos}")
                     refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, clientes_validos)
                     refazer_boleto(mes, ano, lista_dir_clientes, clientes_validos)
                     envia_arquivos(mes, ano, lista_dir_clientes)
@@ -948,7 +949,7 @@ class execute(Resource):
                     print("Processo finalizado com sucesso!")
                     if len(clientes_invalidos) > 0:
                         print(f"Os seguintes clientes não continham extratos à refazer: {clientes_invalidos}")
-                    input("Pressione ENTER para encerrar o robô...")
+                    print("Processo de refazer concluído com sucesso! Encerrando o robo...")
                 else:
                     print("Nenhum cliente valido, encerrando o robô...")
                     sucesso = True
