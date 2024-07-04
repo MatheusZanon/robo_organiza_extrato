@@ -4,10 +4,11 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
+from aws_parameters import get_ssm_parameter
 
 def enviar_email_com_anexos(destinatarios_emails, assunto, corpo, lista_de_anexos):
-    remetente = os.getenv("EMAIL_SENDER")
-    senha = os.getenv("EMAIL_PASSWORD")
+    remetente = get_ssm_parameter('/human/EMAIL_SENDER')
+    senha = get_ssm_parameter('/human/EMAIL_PASSWORD')
 
     if isinstance(destinatarios_emails, str):
         destinatarios_emails = destinatarios_emails.split(", ")

@@ -13,10 +13,14 @@ load_dotenv()
 # =====================CONFIGURAÇÂO DO BANCO DE DADOS======================
 db_conf = configura_db()
 
+# ================= VARIAVEIS DE AMBIENTE DO NIBO =================
+NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
+NIBO_API_TOKEN = os.getenv('NIBO_API_TOKEN')
+NIBO_ORGANIZATION = os.getenv('NIBO_ORGANIZATION')
+NIBO_CATEGORY_ID = os.getenv('NIBO_CATEGORY_ID')
+NIBO_AUTOMACAO_ID = os.getenv('NIBO_AUTOMACAO_ID')
+
 def listar_empresas_clientes():
-    NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
-    NIBO_API_TOKEN = os.getenv('NIBO_API_TOKEN')
-    NIBO_ORGANIZATION = os.getenv('NIBO_ORGANIZATION')
     empresas = []
     response = requests.get(f"{NIBO_API_BASE_URL}/empresas/v1/customers?organization={NIBO_ORGANIZATION}&ApiToken={NIBO_API_TOKEN}")
     if response.status_code == 200:
@@ -25,10 +29,6 @@ def listar_empresas_clientes():
     return empresas
 
 def pegar_empresa_por_id(id):
-    NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
-    NIBO_API_TOKEN = os.getenv('NIBO_API_TOKEN')
-    NIBO_ORGANIZATION = os.getenv('NIBO_ORGANIZATION')
-
     cliente = procura_cliente_por_id(id, db_conf)
     if cliente:
         cnpj = cliente[2]
@@ -51,11 +51,6 @@ def pegar_empresa_por_id(id):
             return data['items'][0]
 
 def agendar_recebimento(empresa, valor, mes, ano):
-    NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
-    NIBO_API_TOKEN = os.getenv('NIBO_API_TOKEN')
-    NIBO_ORGANIZATION = os.getenv('NIBO_ORGANIZATION')
-    NIBO_CATEGORY_ID = os.getenv('NIBO_CATEGORY_ID')
-    NIBO_AUTOMACAO_ID = os.getenv('NIBO_AUTOMACAO_ID')
     # Verificar se o valor é um float, int ou string representando um número
     try:
         valor = float(valor)
@@ -155,10 +150,6 @@ def agendar_recebimento(empresa, valor, mes, ano):
         return False
 
 def cancelar_agendamento_de_recebimento(id_agendamento):
-    NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
-    NIBO_API_TOKEN = os.getenv('NIBO_API_TOKEN')
-    NIBO_ORGANIZATION = os.getenv('NIBO_ORGANIZATION')
-
     try:
         response = requests.delete(f"{NIBO_API_BASE_URL}/empresas/v1/schedules/debit/{id_agendamento}?organization={NIBO_ORGANIZATION}&ApiToken={NIBO_API_TOKEN}")
         if response.status_code == 204:
@@ -170,11 +161,6 @@ def cancelar_agendamento_de_recebimento(id_agendamento):
         return False
 
 def pegar_agendamento_de_pagamento_cliente_por_data(id_cliente, mes, ano):
-    NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
-    NIBO_API_TOKEN = os.getenv('NIBO_API_TOKEN')
-    NIBO_ORGANIZATION = os.getenv('NIBO_ORGANIZATION')
-    CATEGORY_ID = os.getenv('NIBO_CATEGORY_ID')
-
     # Incrementar o mês
     mes = int(mes)
     ano = int(ano)
@@ -188,7 +174,7 @@ def pegar_agendamento_de_pagamento_cliente_por_data(id_cliente, mes, ano):
         ano_vencimento = ano
 
     try:
-        response = requests.get(f"{NIBO_API_BASE_URL}/empresas/v1/customers/{id_cliente}/schedules/?organization={NIBO_ORGANIZATION}&$filter=year(dueDate) eq {ano_vencimento} and month(dueDate) eq {mes_vencimento} and category/id eq {CATEGORY_ID}&ApiToken={NIBO_API_TOKEN}")
+        response = requests.get(f"{NIBO_API_BASE_URL}/empresas/v1/customers/{id_cliente}/schedules/?organization={NIBO_ORGANIZATION}&$filter=year(dueDate) eq {ano_vencimento} and month(dueDate) eq {mes_vencimento} and category/id eq {NIBO_CATEGORY_ID}&ApiToken={NIBO_API_TOKEN}")
         if response.status_code == 200:
             data = response.json()
             return data['items'][0]
@@ -199,10 +185,6 @@ def pegar_agendamento_de_pagamento_cliente_por_data(id_cliente, mes, ano):
         return False
 
 def consultar_boleto_recebimento_agendado(id_agendamento):
-    NIBO_API_BASE_URL = os.getenv('NIBO_API_BASE_URL')
-    NIBO_API_TOKEN = os.getenv('NIBO_API_TOKEN')
-    NIBO_ORGANIZATION = os.getenv('NIBO_ORGANIZATION')
-
     try:
         response = requests.get(f"{NIBO_API_BASE_URL}/empresas/v1/schedules/credit/{id_agendamento}/promise?organization={NIBO_ORGANIZATION}&ApiToken={NIBO_API_TOKEN}")
 

@@ -21,6 +21,7 @@ from components.configuracao_db import configura_db, ler_sql
 from components.procura_cliente import procura_cliente, procura_cliente_por_id
 from components.procura_valores import procura_valores, procura_valores_com_codigo, procura_salarios_com_codigo
 from components.enviar_emails import enviar_email_com_anexos
+from components.aws_parameters import get_ssm_parameter
 from components.integracao_nibo import pegar_empresa_por_id, pegar_agendamento_de_pagamento_cliente_por_data, agendar_recebimento, cancelar_agendamento_de_recebimento
 
 
@@ -54,7 +55,7 @@ def carregar_credenciais():
         
         credentials = identity_pool.Credentials.from_info(secret_json)
 
-        SCOPES = [os.getenv('SCOPES')]
+        SCOPES = [get_ssm_parameter('/human/API_SCOPES')]
         credentials = credentials.with_scopes(SCOPES)
 
         credentials.refresh(Request())
@@ -64,8 +65,8 @@ def carregar_credenciais():
 
 def autenticacao_google_drive():
     try:
-        service_name = os.getenv('GOOGLE_CLOUD_SERVICE_NAME')
-        service_version = os.getenv('GOOGLE_CLOUD_SERVICE_VERSION')
+        service_name = get_ssm_parameter('/human/API_NAME')
+        service_version = get_ssm_parameter('/human/API_VERSION')
         credentials = carregar_credenciais()
         drive_service = build(service_name, service_version, credentials=credentials)
         return drive_service
@@ -932,12 +933,12 @@ def lambda_handler(event, context):
         mes = f"0{mes}"
 
     # ========================PARAMETROS INICIAIS==============================
-    clientes_itaperuna_id = os.getenv('CLIENTES_ITAPERUNA_ID')
-    clientes_manaus_id = os.getenv('CLIENTES_MANAUS_ID')
+    clientes_itaperuna_id = os.getenv('CLIENTES_ITAPERUNA_FOLDER_ID')
+    clientes_manaus_id = os.getenv('CLIENTES_MANAUS_FOLDER_ID')
     arquivos_itaperuna = lista_pastas_em_diretorio(clientes_itaperuna_id)
     arquivos_manaus = lista_pastas_em_diretorio(clientes_manaus_id)
     lista_dir_clientes = arquivos_itaperuna + arquivos_manaus
-    dir_extratos = os.getenv('EXTRATOS_FOLDER_ID')
+    dir_extratos = os.getenv('CLIENTES_EXTRATOS_FOLDER_ID')
     modelo_fatura = Path("templates\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
     sucesso = False
 

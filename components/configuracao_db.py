@@ -1,11 +1,12 @@
 import os
+from aws_parameters import get_ssm_parameter
 
 def configura_db():    
     db_conf = {
-        "host": os.getenv('DB_HOST'),
-        "user": os.getenv('DB_USER'),
-        "password": os.getenv('DB_PASS'),
-        "database": os.getenv('DB_NAME')
+        "host": get_ssm_parameter('/human/DB_HOST'),
+        "user": get_ssm_parameter('/human/DB_USER'),
+        "password": get_ssm_parameter('/human/DB_PASS'),
+        "database": get_ssm_parameter('/human/DB_NAME')
     }
     return db_conf
 
