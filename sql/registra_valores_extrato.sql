@@ -3,5 +3,5 @@ INSERT INTO clientes_financeiro_valores
 numero_estagiarios, trabalhando, salario_contri_empregados, 
 salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, irrf, 
 salarios_pagar, vale_transporte, assinat_eletronica, vale_refeicao, mensal_ponto_elet, 
-saude_seguranca_trabalho, mes, ano, anexo_enviado, relatorio_enviado, created_at, updated_at)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+saude_seguranca_trabalho, seguro_estagio, mes, ano, anexo_enviado, relatorio_enviado, created_at, updated_at)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())

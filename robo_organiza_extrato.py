@@ -56,20 +56,23 @@ corpo_email = os.getenv('CORPO_EMAIL')
 # ==================== MÉTODOS DE AUXÍLIO====================================
 def pega_valores_vales_reembolsos(mes, ano, cliente_id, centro_custo, planilha_vales_sst, planilha_reembolsos):
     try:
-        df_vales_sst = pd.read_excel(planilha_vales_sst, usecols='C:H', skiprows=1)
-        vales = df_vales_sst.loc[df_vales_sst['CLIENTE'] == centro_custo, ['Vale Transporte', 'Assinatura Eletronica', 'Vale Refeição', 'Ponto Eletrônico', 'Saúde/Segurança do Trabalho']]
+        df_vales_sst = pd.read_excel(planilha_vales_sst, usecols='C:I', skiprows=1)
+        vales = df_vales_sst.loc[df_vales_sst['CLIENTE'] == centro_custo, ['Vale Transporte', 'Assinatura Eletronica', 'Vale Refeição', 'Ponto Eletrônico', 'Saúde/Segurança do Trabalho', 'Seguro Estágio']]
+        print(vales)
         if not vales.empty:
             vale_transporte = str(vales['Vale Transporte'].values[0]).replace("R$", "").replace(",", ".")
             assinat_eletronica = str(vales['Assinatura Eletronica'].values[0]).replace("R$", "").replace(",", ".")
             vale_refeicao = str(vales['Vale Refeição'].values[0]).replace("R$", "").replace(",", ".")
             ponto_eletronico = str(vales['Ponto Eletrônico'].values[0]).replace("R$", "").replace(",", ".")
             sst = str(vales['Saúde/Segurança do Trabalho'].values[0]).replace("R$", "").replace(",", ".")
+            seguro_estagio = str(vales['Seguro Estágio'].values[0]).replace("R$", "").replace(",", ".")
         else:
             vale_transporte = 0
             assinat_eletronica = 0
             vale_refeicao = 0
             ponto_eletronico = 0
             sst = 0
+            seguro_estagio = 0
 
         df_reembolsos = pd.read_excel(planilha_reembolsos, usecols='B:D', skiprows=1)
         reembolsos = df_reembolsos[(df_reembolsos['CLIENTE'] == centro_custo) & (df_reembolsos['Descrição'].notnull()) & (df_reembolsos['Valor'].notnull())]
@@ -92,7 +95,7 @@ def pega_valores_vales_reembolsos(mes, ano, cliente_id, centro_custo, planilha_v
                         conn.commit()
                 else:
                     print("Reembolso já cadastrado!")
-        return vale_transporte, assinat_eletronica, vale_refeicao, ponto_eletronico, sst
+        return vale_transporte, assinat_eletronica, vale_refeicao, ponto_eletronico, sst, seguro_estagio
     except Exception as error:
         print(error)
 
@@ -435,7 +438,7 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
                             else:
                                 liquido_centro_custo = 0
 
-                            vale_transporte, assinat_eletronica, vale_refeicao, ponto_eletronico, sst = pega_valores_vales_reembolsos(mes, ano, 
+                            vale_transporte, assinat_eletronica, vale_refeicao, ponto_eletronico, sst, seguro_estagio = pega_valores_vales_reembolsos(mes, ano, 
                                                                                                         cliente_id, nome_centro_custo_mod.replace("S/S", "S S"), 
                                                                                                         planilha_vales_sst, planilha_reembolsos)
                             # INSERÇÃO DE DADOS NO BANCO
@@ -445,7 +448,7 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
                                                         num_estagiarios, trabalhando, salario_contri_empregados, 
                                                         salario_contri_contribuintes, soma_salarios_provdt, inss, fgts, 
                                                         irrf, liquido_centro_custo, vale_transporte, assinat_eletronica, 
-                                                        vale_refeicao, ponto_eletronico, sst, mes, ano, 0, 0
+                                                        vale_refeicao, ponto_eletronico, sst, seguro_estagio, mes, ano, 0, 0
                                                         )
                             with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
                                 cursor.execute(query_insert_valores, values_insert_valores)
@@ -516,7 +519,7 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                                         sheet['D2'] = f"Fatura Detalhada - {nome_pasta_cliente}"
                                         # convênio farmácia
                                         if not valores_financeiro[1] == None:
-                                            sheet['J18'] = valores_financeiro[1]
+                                            sheet['J19'] = valores_financeiro[1]
                                             conv_farmacia = valores_financeiro[1]
                                         else:
                                             conv_farmacia = 0
@@ -586,6 +589,12 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                                             sst = valores_financeiro[17]
                                         else:
                                             sst = 0
+                                        # seguro estágio
+                                        if not valores_financeiro[18] == None:
+                                            sheet['J18'] = valores_financeiro[18]
+                                            seguro_estagio = valores_financeiro[18]
+                                        else:
+                                            seguro_estagio = 0
                                         #reembolsos
                                         query_procura_reembolsos = ler_sql('sql/procura_valores_reembolsos.sql')
                                         values_procura_reembolsos = (cliente_id, mes, ano)
@@ -594,14 +603,14 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                                             reembolsos = cursor.fetchall()
                                             conn.commit()
                                         reembolso_total = 0
-                                        LINHA = 19 
+                                        LINHA = 20 
                                         if not reembolsos == []:
-                                            cel_1 = 23
-                                            cel_2 = 24
+                                            cel_1 = 24
+                                            cel_2 = 25
                                             for reembolso in reembolsos:
                                                 cel_1 += 1
                                                 cel_2 += 1
-                                                sheet.insert_rows(19)
+                                                sheet.insert_rows(20)
                                                 sheet[f'J{LINHA}'].style = style_moeda
                                                 sheet[f'A{LINHA}'].border = Border(bottom=Side(style='thin'), left=Side(style='thin'))
                                                 sheet[f'B{LINHA}'].border = Border(bottom=Side(style='thin'))
@@ -638,7 +647,7 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura):
                                         # valor total da fatura
                                         fatura = (salarios_pagar + inss + fgts + adiant_salarial + prov_direitos
                                                   + irrf + mensal_ponto + assinatura_elet + vale_transp + vale_refeic
-                                                  + sst + conv_farmacia + percent_human + reembolso_total
+                                                  + sst + seguro_estagio + conv_farmacia + percent_human + reembolso_total
                                                  )
                                         total_fatura = round(fatura, 2)
 
