@@ -32,11 +32,16 @@ def enviar_email_com_anexos(destinatarios_emails, assunto, corpo, lista_de_anexo
         part.add_header('Content-Disposition', 'attachment', filename=("utf-8", "", nome_anexo))
         msg.attach(part)
 
-    # Configurar o servidor SMTP e enviar o email
-    server = smtplib.SMTP('smtp.gmail.com', 587)  # Use o servidor SMTP correto e a porta
-    server.starttls()
-    server.login(remetente, senha)
-    text = msg.as_string()
-    server.sendmail(remetente, destinatarios_emails, text)
-    server.quit()
-    print("Email enviado com sucesso!")
+    try:
+        # Configurar o servidor SMTP e enviar o email
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(remetente, senha)
+        text = msg.as_string()
+        server.sendmail(remetente, destinatarios_emails, text)
+        server.quit()
+        print("Email enviado com sucesso!")
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"Falha na autenticação: {e.smtp_code} - {e.smtp_error}")
+    except Exception as e:
+        print(f"Ocorreu um erro: {e}")

@@ -929,7 +929,7 @@ class execute(Resource):
             envia_arquivos(mes, ano, lista_dir_clientes)
             sucesso = True
         elif rotina == "4. Enviar Arquivos":
-            envia_arquivos(mes, ano)
+            envia_arquivos(mes, ano, lista_dir_clientes)
             sucesso = True
         elif rotina == "5. Refazer Processo":
             if len(clientes) > 0:
