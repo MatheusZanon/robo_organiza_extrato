@@ -5,10 +5,7 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 
-def enviar_email_com_anexos(destinatarios_emails, assunto, corpo, lista_de_anexos):
-    remetente = os.getenv("EMAIL_SENDER")
-    senha = os.getenv("EMAIL_PASSWORD")
-
+def enviar_email_com_anexos(remetente, senha, destinatarios_emails, assunto, corpo, lista_de_anexos):
     if isinstance(destinatarios_emails, str):
         destinatarios_emails = destinatarios_emails.split(", ")
 

@@ -44,7 +44,8 @@ automacao_email = os.getenv('SELENIUM_USER')
 automacao_senha = os.getenv('SELENIUM_PASSWORD')
 email_gestor = os.getenv('EMAIL_GESTOR')
 corpo_email = os.getenv('CORPO_EMAIL')
-
+remetente = os.getenv("EMAIL")
+senha = os.getenv("SENHA")
 
 # ==================== MÉTODOS DE AUXÍLIO====================================
 def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_financeiro, mes, ano, modelo_fatura):
@@ -569,7 +570,7 @@ def envia_arquivos(mes, ano, lista_dir_clientes):
                                     cliente_email = cliente[4]
                                     valores_extrato = procura_valores(cliente_id, db_conf, mes, ano)
                                     if valores_extrato and valores_extrato[21] == 0 and not cliente_email == None:
-                                        enviar_email_com_anexos(f"{cliente_email}, {email_gestor}", f"Documentos de Terceirização - {nome_pasta_cliente}", 
+                                        enviar_email_com_anexos(remetente, senha, f"{cliente_email}, {email_gestor}", f"Documentos de Terceirização - {nome_pasta_cliente}", 
                                                                f"{corpo_email}", anexos)
                                         query_atualiza_anexos = ler_sql("sql/atualiza_anexos_cliente.sql")
                                         values_anexos = (cliente_id, mes, ano)
@@ -580,7 +581,7 @@ def envia_arquivos(mes, ano, lista_dir_clientes):
                                     elif valores_extrato == None:
                                         print("Valores de financeiro não encontrados!")
                                     elif valores_extrato[21] == 1:
-                                        print("Anexos já enviados para o cliente!")
+                                        print(f"Anexos já enviados para o cliente {nome_pasta_cliente}!")
                                     elif cliente_email == None:
                                         print("Cliente sem email!")
                                 else:
