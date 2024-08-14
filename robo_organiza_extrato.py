@@ -5,7 +5,6 @@ import boto3
 from botocore.exceptions import ClientError
 import pythoncom
 from time import sleep
-import win32com.client as win32
 import mysql.connector
 from re import search
 from pathlib import Path
@@ -21,75 +20,12 @@ from components.configuracao_db import configura_db, ler_sql
 from components.procura_cliente import procura_cliente, procura_cliente_por_id
 from components.procura_valores import procura_valores, procura_valores_com_codigo, procura_salarios_com_codigo
 from components.enviar_emails import enviar_email_com_anexos
-from components.aws_parameters import get_ssm_parameter
 from components.integracao_nibo import pegar_empresa_por_id, pegar_agendamento_de_pagamento_cliente_por_data, agendar_recebimento, cancelar_agendamento_de_recebimento
+from components.google_drive import autenticacao_google_drive, lista_pastas_em_diretorio
+from components.importacao_automacao_excel_openpyxl import converter_excel_para_pdf
 
 
 # ==================== MÉTODOS DE AUXÍLIO====================================
-def get_secret():
-    secret_name = "GoogleFederationConfig"
-    region_name = "sa-east-1"
-
-    # Create a Secrets Manager client
-    session = boto3.session.Session()
-    client = session.client(
-        service_name='secretsmanager',
-        region_name=region_name
-    )
-    try:
-        get_secret_value_response = client.get_secret_value(
-            SecretId=secret_name
-        )
-    except ClientError as e:
-        # For a list of exceptions thrown, see
-        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
-        raise e
-
-    secret = get_secret_value_response['SecretString']
-    return json.loads(secret)
-
-def carregar_credenciais():
-    try:
-        secret_name = "GoogleFederationConfig"
-        secret_json = get_secret(secret_name)
-        
-        credentials = identity_pool.Credentials.from_info(secret_json)
-
-        SCOPES = [get_ssm_parameter('/human/API_SCOPES')]
-        credentials = credentials.with_scopes(SCOPES)
-
-        credentials.refresh(Request())
-        return credentials
-    except Exception as error:
-        print(error)
-
-def autenticacao_google_drive():
-    try:
-        service_name = get_ssm_parameter('/human/API_NAME')
-        service_version = get_ssm_parameter('/human/API_VERSION')
-        credentials = carregar_credenciais()
-        drive_service = build(service_name, service_version, credentials=credentials)
-        return drive_service
-    except Exception as error:
-        print(error)
-
-driver_service = autenticacao_google_drive()
-
-def lista_pastas_em_diretorio(folder_id):
-    try:
-        query = f"'{folder_id}' in parents and trashed=false"
-        results = driver_service.files().list(q=query, pageSize=80, fields="files(id, name)").execute()
-        items = results.get('files', [])
-        return items
-    except Exception as error:
-        print(error)
-
-def lista_pastas_subpastas_em_diretorio(folder_id):
-    try:
-        all_files = []
-        folders_to_process = [folder_id]
-    except Exception as error:
-        print(error)
 
 def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_financeiro, db_conf, mes, ano, modelo_fatura):
     caminho_sub_pasta = Path(caminho_sub_pasta_cliente)
@@ -239,15 +175,21 @@ def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_fin
 
         # GERANDO PDF DA FATURA
         try:
-            excel = win32.gencache.EnsureDispatch('Excel.Application')
-            excel.Visible = True
-            wb = excel.Workbooks.Open(caminho_fatura)
-            ws = wb.Worksheets[f"{mes}.{ano}"]
-            sleep(3)
+            # excel = win32.gencache.EnsureDispatch('Excel.Application')
+            # excel.Visible = True
+            # wb = excel.Workbooks.Open(caminho_fatura)
+            # ws = wb.Worksheets[f"{mes}.{ano}"]
+            # sleep(3)
 
-            ws.ExportAsFixedFormat(0, caminho_sub_pasta_cliente + f"\\Fatura_Detalhada_{nome_cliente}_{ano}.{mes}")
-            wb.Close()
-            excel.Quit()
+            # ws.ExportAsFixedFormat(0, caminho_sub_pasta_cliente + f"\\Fatura_Detalhada_{nome_cliente}_{ano}.{mes}")
+            # wb.Close()
+            # excel.Quit()
+
+            # Criando a fatura detalhada em PDF
+            converter_excel_para_pdf(caminho_fatura, f"/tmp/fatura_detalhada_{nome_cliente}_{ano}.{mes}", f"{mes}.{ano}")   
+
+            # TODO: Enviar para a pasta do cliente no google drive
+                     
             query_fatura = ler_sql('sql/registra_valores_fatura.sql')
             with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
                 cursor.execute(query_fatura, (percent_human, eco_mensal, eco_liquida, total_fatura, cliente_id, mes, ano))
@@ -932,18 +874,23 @@ def lambda_handler(event, context):
     if mes < 10:
         mes = f"0{mes}"
 
+    # ======================== INICIALIZAÇÃO GOOGLE DRIVE ======================
+    drive_service = autenticacao_google_drive()
+
     # ========================PARAMETROS INICIAIS==============================
     clientes_itaperuna_id = os.getenv('CLIENTES_ITAPERUNA_FOLDER_ID')
     clientes_manaus_id = os.getenv('CLIENTES_MANAUS_FOLDER_ID')
-    arquivos_itaperuna = lista_pastas_em_diretorio(clientes_itaperuna_id)
-    arquivos_manaus = lista_pastas_em_diretorio(clientes_manaus_id)
+    dir_extratos_id = os.getenv('CLIENTES_EXTRATOS_FOLDER_ID')
+    arquivos_itaperuna = lista_pastas_em_diretorio(drive_service, clientes_itaperuna_id)
+    arquivos_manaus = lista_pastas_em_diretorio(drive_service, clientes_manaus_id)
+    dir_extratos = lista_pastas_em_diretorio(drive_service, dir_extratos_id)
     lista_dir_clientes = arquivos_itaperuna + arquivos_manaus
-    dir_extratos = os.getenv('CLIENTES_EXTRATOS_FOLDER_ID')
     modelo_fatura = Path("templates\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
     sucesso = False
 
     # =====================CONFIGURAÇÂO DO BANCO DE DADOS======================
     db_conf = configura_db()
+    print(db_conf)
 
     # ================CONFIGURAÇÃO DAS VARIAVEIS DE AMBIENTE=====================
     email_gestor = os.getenv('EMAIL_GESTOR')

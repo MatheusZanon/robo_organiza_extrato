@@ -2,6 +2,9 @@
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, NamedStyle
 from openpyxl.utils.exceptions import InvalidFileException
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.backends.backend_pdf
 
 def carrega_excel(arquivoExcel):
     try:
@@ -20,3 +23,42 @@ def carrega_excel(arquivoExcel):
     except Exception as e:
         print(f"Erro inesperado: {e}")
         return None, None, None
+
+def converter_excel_para_pdf(caminho_excel, caminho_pdf):
+    df = pd.read_excel(caminho_excel)
+    pdf = matplotlib.backends.backend_pdf.PdfPages(caminho_pdf)
+    fig, ax = plt.subplots(figsize=(8.27, 11.69))  # A4 size in inches
+    ax.axis('tight')
+    ax.axis('off')
+    table = ax.table(cellText=df.values, colLabels=df.columns, cellLoc='center', loc='center')
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1.2, 1.2)
+    pdf.savefig(fig, bbox_inches='tight')
+    plt.close(fig)
+    pdf.close()
+
+def converter_excel_para_pdf(caminho_excel, caminho_pdf, nome_planilha):
+    # Carregar a planilha específica do arquivo Excel
+    wb = load_workbook(caminho_excel)
+    ws = wb[nome_planilha]
+
+    # Converter a planilha em um DataFrame
+    data = ws.values
+    columns = next(data)[0:]
+    df = pd.DataFrame(data, columns=columns)
+
+    # Gerar o PDF usando o matplotlib
+    pdf = matplotlib.backends.backend_pdf.PdfPages(caminho_pdf)
+    fig, ax = plt.subplots(figsize=(8.27, 11.69))  # A4 em polegadas
+    ax.axis('tight')
+    ax.axis('off')
+
+    table = ax.table(cellText=df.values, colLabels=df.columns, cellLoc='center', loc='center')
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1.2, 1.2)
+    
+    pdf.savefig(fig, bbox_inches='tight')
+    plt.close(fig)
+    pdf.close()
