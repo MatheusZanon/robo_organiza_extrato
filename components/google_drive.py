@@ -1,12 +1,14 @@
 from aws_parameters import get_ssm_parameter
 import json
 import os
+from pathlib import Path
+import io
 import boto3
 from botocore.exceptions import ClientError
 from google.auth.transport.requests import Request
 from google.auth import identity_pool
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 def get_secret():
     secret_name = "GoogleFederationConfig"
@@ -351,3 +353,20 @@ def upload_arquivo_drive(driver_service, file_path, folder_id):
     except Exception as error:
         print(f"Erro ao criar arquivo no Google Drive: {error}")
         return None
+
+def download_arquivo_drive(drive_service, file_id, file_path):
+    try:
+        request = drive_service.files().get_media(fileId=file_id)
+
+        fh = io.FileIO(file_path, 'wb')
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while done is False:
+            status, done = downloader.next_chunk()
+            print(f"Download {int(status.progress() * 100)}%.")
+        
+        if done:
+            return Path(file_path)
+        
+    except Exception as error:
+        print(f"Erro ao baixar arquivo do Google Drive: {error}")

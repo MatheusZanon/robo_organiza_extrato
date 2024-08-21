@@ -21,7 +21,7 @@ from components.procura_cliente import procura_cliente, procura_cliente_por_id
 from components.procura_valores import procura_valores, procura_valores_com_codigo, procura_salarios_com_codigo
 from components.enviar_emails import enviar_email_com_anexos
 from components.integracao_nibo import pegar_empresa_por_id, pegar_agendamento_de_pagamento_cliente_por_data, agendar_recebimento, cancelar_agendamento_de_recebimento
-from components.google_drive import autenticacao_google_drive, lista_pastas_em_diretorio
+from components.google_drive import autenticacao_google_drive, lista_pastas_em_diretorio, listar_arquivos_drive, download_arquivo_drive, encontrar_pasta_por_nome, criar_pasta_drive, upload_arquivo_drive
 from components.importacao_automacao_excel_openpyxl import converter_excel_para_pdf
 
 
@@ -263,18 +263,26 @@ def valida_clientes(clientes, dir_extratos, db_conf) -> list[int]:
     return clientes_validos
 
 # ==================== MÉTODOS DE CADA ETAPA DO PROCESSO=======================
-def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, db_conf):
+def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, db_conf, drive_service):
     try:
-        pasta_faturas = listagem_pastas(dir_extratos)
-        for pasta in pasta_faturas:
-            if Path(pasta).name.find(f"novos_extratos") == 0:
+        for pasta_id in dir_extratos:
+            pastas = lista_pastas_em_diretorio(drive_service, pasta_id)
+            existe_pasta_novos_extratos = any(pasta['name'] == 'novos_extratos' for pasta in pastas)
+            
+            if existe_pasta_novos_extratos:
+                print(f"O diretório {pasta_id} já possui uma pasta de novos extratos. Ignorando.")
                 continue
 
-            extratos = listagem_arquivos(pasta)
+            extratos = listar_arquivos_drive(drive_service, pasta_id)
             for extrato in extratos:
-                if extrato.__contains__(".pdf"):
-                    nome_extrato = pega_nome(extrato)
-                    texto_pdf = extract_text_pdf(extrato)
+                if extrato['mimeType'] == 'application/pdf':
+                    extrato_local = download_arquivo_drive(drive_service, extrato['id'], 'tmp/extrato.pdf')
+                    if not extrato_local:
+                        print(f"O arquivo {extrato['name']} não pode ser baixado.")
+                        continue
+                    
+                    nome_extrato = pega_nome(extrato_local)
+                    texto_pdf = extract_text_pdf(extrato_local)
 
                     # Nome do Centro de Custo
                     match_centro_custo = search(r"C\.Custo:\s*(.*)", texto_pdf)
@@ -288,9 +296,14 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, db_conf):
                     cliente = procura_cliente(nome_centro_custo_mod, db_conf)
                     if cliente and cliente[7] == True:
                         cliente_id = cliente[0]
-                        caminho_pasta_cliente = Path(procura_pasta_cliente(nome_centro_custo_mod, lista_dir_clientes))
-                        caminho_sub_pasta_cliente = Path(f"{caminho_pasta_cliente}\\{ano}-{mes}")
-                        caminho_sub_pasta_cliente.mkdir(parents=True, exist_ok=True)
+                        # TODO: Verificar se vai pegar a pasta, talvez lista clientes seja uma lista contendo os json, dos conteudos da pasta dos clientes itaperuna/manaus, talvez precise de um for loop
+                        caminho_pasta_cliente = encontrar_pasta_por_nome(lista_dir_clientes, nome_centro_custo_mod)
+                        #if not caminho_pasta_cliente:
+                        #    caminho_pasta_cliente = criar_pasta_drive(drive_service, nome_centro_custo_mod)
+
+                        caminho_sub_pasta_cliente = encontrar_pasta_por_nome(caminho_pasta_cliente['id'], f"{ano}-{mes}")
+                        if not caminho_sub_pasta_cliente:
+                            caminho_sub_pasta_cliente = criar_pasta_drive(drive_service, f"{ano}-{mes}", caminho_pasta_cliente['id'])
                         
                         # CONVÊNIO FÁRMACIA
                         match_convenio_farm = search(r"\d{3}\s*CONV[EÊ]NIO\s+FARM[AÁ]CIA\s*([\d.,]+)", texto_pdf)
@@ -428,14 +441,15 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, db_conf):
                             except Exception as error:
                                 print(f"Erro ao registrar os valores de extrato: {error}")
                         
-                        caminho_pdf = Path(extrato)
+                        caminho_pdf = Path(extrato_local)
                         if not nome_extrato.__contains__(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S")}_{ano}.{mes}"):
                             novo_nome_extrato = caminho_pdf.with_name(f"Extrato_Mensal_{nome_centro_custo.replace("S/S", "S S").strip()}_{ano}.{mes}.pdf")
                             caminho_pdf_mod = caminho_pdf.rename(novo_nome_extrato)
                         else:
                             caminho_pdf_mod = caminho_pdf
-                        caminho_destino = Path(caminho_sub_pasta_cliente)
-                        copy(caminho_pdf_mod, caminho_destino / caminho_pdf_mod.name)
+                        
+                        # COPIA O ARQUIVO NA PASTA DO CLIENTE
+                        upload_arquivo_drive(drive_service, caminho_pdf_mod, caminho_sub_pasta_cliente['id'])
                     else:
                         print(f"Cliente não encontrado ou inativo: {nome_centro_custo}\n")
     except Exception as error:
