@@ -24,41 +24,30 @@ def carrega_excel(arquivoExcel):
         print(f"Erro inesperado: {e}")
         return None, None, None
 
-def converter_excel_para_pdf(caminho_excel, caminho_pdf):
-    df = pd.read_excel(caminho_excel)
+def converter_excel_para_pdf(caminho_excel, caminho_pdf, nome_planilha=None):
+    if nome_planilha:
+        # Carregar a planilha específica do arquivo Excel
+        wb = load_workbook(caminho_excel)
+        ws = wb[nome_planilha]
+        # Converter a planilha em um DataFrame
+        data = ws.values
+        columns = next(data)[0:]
+        df = pd.DataFrame(data, columns=columns)
+    else:
+        # Carregar o primeiro arquivo excel para um DataFrame
+        df = pd.read_excel(caminho_excel)
+    
+    # Gerar o PDF usando o matplotlib
     pdf = matplotlib.backends.backend_pdf.PdfPages(caminho_pdf)
     fig, ax = plt.subplots(figsize=(8.27, 11.69))  # A4 size in inches
     ax.axis('tight')
     ax.axis('off')
-    table = ax.table(cellText=df.values, colLabels=df.columns, cellLoc='center', loc='center')
-    table.auto_set_font_size(False)
-    table.set_fontsize(10)
-    table.scale(1.2, 1.2)
-    pdf.savefig(fig, bbox_inches='tight')
-    plt.close(fig)
-    pdf.close()
-
-def converter_excel_para_pdf(caminho_excel, caminho_pdf, nome_planilha):
-    # Carregar a planilha específica do arquivo Excel
-    wb = load_workbook(caminho_excel)
-    ws = wb[nome_planilha]
-
-    # Converter a planilha em um DataFrame
-    data = ws.values
-    columns = next(data)[0:]
-    df = pd.DataFrame(data, columns=columns)
-
-    # Gerar o PDF usando o matplotlib
-    pdf = matplotlib.backends.backend_pdf.PdfPages(caminho_pdf)
-    fig, ax = plt.subplots(figsize=(8.27, 11.69))  # A4 em polegadas
-    ax.axis('tight')
-    ax.axis('off')
 
     table = ax.table(cellText=df.values, colLabels=df.columns, cellLoc='center', loc='center')
     table.auto_set_font_size(False)
     table.set_fontsize(10)
     table.scale(1.2, 1.2)
-    
+
     pdf.savefig(fig, bbox_inches='tight')
     plt.close(fig)
     pdf.close()

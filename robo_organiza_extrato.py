@@ -298,7 +298,7 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, db_conf, drive
                     if cliente and cliente[7] == True:
                         cliente_id = cliente[0]
                         # TODO: Verificar se vai pegar a pasta, talvez lista clientes seja uma lista contendo os json, dos conteudos da pasta dos clientes itaperuna/manaus, talvez precise de um for loop
-                        caminho_pasta_cliente = encontrar_pasta_por_nome(lista_dir_clientes, nome_centro_custo_mod)
+                        caminho_pasta_cliente = encontrar_pasta_por_nome(drive_service, lista_dir_clientes, nome_centro_custo_mod)
                         #if not caminho_pasta_cliente:
                         #    caminho_pasta_cliente = criar_pasta_drive(drive_service, nome_centro_custo_mod)
 
@@ -459,44 +459,39 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, db_conf, drive
         else:
             print(f"O sistema retornou um erro: {error}")
 
-def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf):
+def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf, drive_service):
     try:
-        pythoncom.CoInitialize()
-        for diretorio in lista_dir_clientes:
-            input(f"diretorio: {diretorio}\n")
-            pastas_regioes = listagem_pastas(diretorio)
-            for pasta_cliente in pastas_regioes:
-                nome_pasta_cliente = pega_nome(pasta_cliente)
-                sub_pastas_cliente = listagem_pastas(pasta_cliente)
-                for sub_pasta in sub_pastas_cliente:
-                    if sub_pasta.__contains__(f"{ano}-{mes}"):
-                        arquivos_cliente = listagem_arquivos(sub_pasta)
-                        for arquivo in arquivos_cliente:
-                            if (arquivo.__contains__("Fatura_Detalhada_") 
-                            and arquivo.__contains__(nome_pasta_cliente)
-                            and arquivo.__contains__(".pdf")):
-                                fatura_pronta = True
-                                break
-                            else:
-                                fatura_pronta = False
-                        if fatura_pronta == True:
-                            fatura_pronta = False
-                            break
-                        elif fatura_pronta == False:
-                            cliente = procura_cliente(nome_pasta_cliente, db_conf)
-                            if cliente and cliente[7] == True:
-                                cliente_id = cliente[0]
-                                valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
-                                if valores_financeiro != None:
-                                    cria_fatura(cliente_id, nome_pasta_cliente, sub_pasta, valores_financeiro, db_conf, mes, ano, modelo_fatura)
-                                else: 
-                                    print("Cliente não possui valores para gerar fatura!")
-                            else:
-                                print("Cliente não encontrado ou inativo!")
+        for pasta_cliente in lista_dir_clientes:
+            input(f"diretorio: {pasta_cliente}\n")
+            pasta_cliente_ano_mes = encontrar_pasta_por_nome(drive_service, pasta_cliente['id'], f"{ano}-{mes}")
+            if not pasta_cliente:
+                print(f"Pasta {ano}-{mes} do cliente {pasta_cliente_ano_mes['name']} não encontrada! criando pasta...\n")
+                pasta_cliente_ano_mes = criar_pasta_drive(drive_service, f"{ano}-{mes}", pasta_cliente['id'])
+            
+            arquivos_pasta_cliente = listar_arquivos_drive(drive_service, pasta_cliente_ano_mes['id'])
+            for arquivo in arquivos_pasta_cliente:
+                if (arquivo['mimeType'] == 'application/pdf' and arquivo['name'].__contains__(f"Fatura_Detalhada_{pasta_cliente['name']}.pdf")):
+                    fatura_pronta = True
+                    break
+                else:
+                    fatura_pronta = False
+            
+            if fatura_pronta == True:
+                fatura_pronta = False
+                break
+            elif fatura_pronta == False:
+                cliente = procura_cliente(pasta_cliente['name'], db_conf)
+                if cliente and cliente[7] == True:
+                    cliente_id = cliente[0]
+                    valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
+                    if valores_financeiro != None:
+                        cria_fatura(cliente_id, pasta_cliente['name'], pasta_cliente_ano_mes, valores_financeiro, db_conf, mes, ano, modelo_fatura)
+                    else: 
+                        print("Cliente não possui valores para gerar fatura!")
+                else:
+                    print("Cliente não encontrado ou inativo!")
     except Exception as error:
         return (error)
-    finally:
-        pythoncom.CoUninitialize()
 
 def gera_boleto(mes, ano, lista_dir_clientes, db_conf):
     try:
