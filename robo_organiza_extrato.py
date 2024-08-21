@@ -27,11 +27,10 @@ from components.importacao_automacao_excel_openpyxl import converter_excel_para_
 
 # ==================== MÉTODOS DE AUXÍLIO====================================
 
-def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_financeiro, db_conf, mes, ano, modelo_fatura):
-    caminho_sub_pasta = Path(caminho_sub_pasta_cliente)
+def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_financeiro, db_conf, mes, ano, modelo_fatura, drive_service):
     nome_fatura = f"Fatura_Detalhada_{nome_cliente}_{ano}.{mes}.xlsx"
-    caminho_fatura = f"{caminho_sub_pasta}\\{nome_fatura}"     
-    copy(modelo_fatura, caminho_sub_pasta / nome_fatura)
+    caminho_fatura = Path(f"/tmp/{nome_fatura}")
+    copy(modelo_fatura, caminho_fatura)
 
     try:
         # FORMATANDO A FATURA                                       
@@ -175,20 +174,21 @@ def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_fin
 
         # GERANDO PDF DA FATURA
         try:
-            # excel = win32.gencache.EnsureDispatch('Excel.Application')
-            # excel.Visible = True
-            # wb = excel.Workbooks.Open(caminho_fatura)
-            # ws = wb.Worksheets[f"{mes}.{ano}"]
-            # sleep(3)
+            caminho_pdf = f"/tmp/fatura_detalhada_{nome_cliente}_{ano}.{mes}.pdf"
+            converter_excel_para_pdf(caminho_fatura, caminho_pdf, f"{mes}.{ano}")   
 
-            # ws.ExportAsFixedFormat(0, caminho_sub_pasta_cliente + f"\\Fatura_Detalhada_{nome_cliente}_{ano}.{mes}")
-            # wb.Close()
-            # excel.Quit()
+            # Enviar PDF para o Google Drive
+            # Cria a pasta do cliente no Google Drive se não existir
+            pasta_cliente_id = caminho_sub_pasta_cliente['id']
 
-            # Criando a fatura detalhada em PDF
-            converter_excel_para_pdf(caminho_fatura, f"/tmp/fatura_detalhada_{nome_cliente}_{ano}.{mes}", f"{mes}.{ano}")   
+            if not pasta_cliente_id:
+                pasta_cliente_id = criar_pasta_drive(drive_service, caminho_sub_pasta_cliente, nome_cliente)
 
-            # TODO: Enviar para a pasta do cliente no google drive
+                if not pasta_cliente_id:
+                    raise Exception(f"Erro ao criar pasta do cliente {nome_cliente}.")
+
+            # Faz o upload do PDF para a pasta do cliente no Google Drive
+            upload_arquivo_drive(drive_service, caminho_pdf, pasta_cliente_id)
                      
             query_fatura = ler_sql('sql/registra_valores_fatura.sql')
             with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
@@ -464,32 +464,32 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf, drive_serv
         for pasta_cliente in lista_dir_clientes:
             input(f"diretorio: {pasta_cliente}\n")
             pasta_cliente_ano_mes = encontrar_pasta_por_nome(drive_service, pasta_cliente['id'], f"{ano}-{mes}")
-            if not pasta_cliente:
+            if not pasta_cliente_ano_mes:
                 print(f"Pasta {ano}-{mes} do cliente {pasta_cliente_ano_mes['name']} não encontrada! criando pasta...\n")
                 pasta_cliente_ano_mes = criar_pasta_drive(drive_service, f"{ano}-{mes}", pasta_cliente['id'])
-            
+                if not pasta_cliente_ano_mes:
+                    raise ValueError(f"Pasta {ano}-{mes} do cliente {pasta_cliente_ano_mes['name']} não pode ser criada!")
+                
             arquivos_pasta_cliente = listar_arquivos_drive(drive_service, pasta_cliente_ano_mes['id'])
-            for arquivo in arquivos_pasta_cliente:
-                if (arquivo['mimeType'] == 'application/pdf' and arquivo['name'].__contains__(f"Fatura_Detalhada_{pasta_cliente['name']}.pdf")):
-                    fatura_pronta = True
-                    break
-                else:
-                    fatura_pronta = False
+            fatura_pronta = any(
+                arquivo['mimeType'] == 'application/pdf' and f"Fatura_Detalhada_{pasta_cliente['name']}.pdf" in arquivo['name']
+                for arquivo in arquivos_pasta_cliente
+            )
+
+            if fatura_pronta:
+                print(f"Pasta {ano}-{mes} do cliente {pasta_cliente_ano_mes['name']} encontrada e fatura pronta!\n")
+                continue
             
-            if fatura_pronta == True:
-                fatura_pronta = False
-                break
-            elif fatura_pronta == False:
-                cliente = procura_cliente(pasta_cliente['name'], db_conf)
-                if cliente and cliente[7] == True:
-                    cliente_id = cliente[0]
-                    valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
-                    if valores_financeiro != None:
-                        cria_fatura(cliente_id, pasta_cliente['name'], pasta_cliente_ano_mes, valores_financeiro, db_conf, mes, ano, modelo_fatura)
-                    else: 
-                        print("Cliente não possui valores para gerar fatura!")
-                else:
-                    print("Cliente não encontrado ou inativo!")
+            cliente = procura_cliente(pasta_cliente['name'], db_conf)
+            if cliente and cliente[7] == True:
+                cliente_id = cliente[0]
+                valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
+                if valores_financeiro != None:
+                    cria_fatura(cliente_id, pasta_cliente['name'], pasta_cliente_ano_mes, valores_financeiro, db_conf, mes, ano, modelo_fatura)
+                else: 
+                    print("Cliente não possui valores para gerar fatura!")
+            else:
+                print("Cliente não encontrado ou inativo!")
     except Exception as error:
         return (error)
 
