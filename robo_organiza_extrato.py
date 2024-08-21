@@ -199,7 +199,7 @@ def cria_fatura(cliente_id, nome_cliente, caminho_sub_pasta_cliente, valores_fin
     except Exception as error:
         print(error)
 
-def copia_boleto_baixado(nome_cliente, mes, ano, pasta_cliente):
+def copia_boleto_baixado(nome_cliente, mes, ano, pasta_cliente, drive_service):
     try:
         arquivos_downloads = listagem_arquivos_downloads()
         arquivo_mais_recente = max(arquivos_downloads, key=os.path.getmtime)
@@ -209,7 +209,8 @@ def copia_boleto_baixado(nome_cliente, mes, ano, pasta_cliente):
             novo_nome_boleto = caminho_pdf.with_name(f"Boleto_Recebimento_{nome_cliente.replace("S/S", "S S")}_{ano}.{mes}.pdf")
             caminho_pdf_mod = caminho_pdf.rename(novo_nome_boleto)
             sleep(0.5)
-            copy(caminho_pdf_mod, pasta_cliente / caminho_pdf_mod.name)
+            # copy(caminho_pdf_mod, pasta_cliente / caminho_pdf_mod.name)
+            upload_arquivo_drive(drive_service, caminho_pdf_mod, pasta_cliente['id'])
             if os.path.exists(caminho_pdf_mod):
                 os.remove(caminho_pdf_mod)
             else:
@@ -493,42 +494,42 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf, drive_serv
     except Exception as error:
         return (error)
 
-def gera_boleto(mes, ano, lista_dir_clientes, db_conf):
+def gera_boleto(mes, ano, lista_dir_clientes, db_conf, drive_service):
     try:
-        for diretorio in lista_dir_clientes:
-            pastas_regioes = listagem_pastas(diretorio)
-            for pasta_cliente in pastas_regioes:
-                nome_pasta_cliente = pega_nome(pasta_cliente)
-                sub_pastas_cliente = listagem_pastas(pasta_cliente)
-                for sub_pasta in sub_pastas_cliente:
-                    if sub_pasta.__contains__(f"{ano}-{mes}"):
-                        caminho_destino = Path(sub_pasta)
-                        arquivos_cliente = listagem_arquivos(sub_pasta)
-                        for arquivo in arquivos_cliente:
-                            if arquivo.__contains__("Boleto_Recebimento_") and arquivo.__contains__(nome_pasta_cliente):
-                                boleto = True
-                                break
-                            else:
-                                boleto = False
-                        if boleto == True:
-                            boleto = False
-                            break
-                        elif boleto == False:
-                            cliente = procura_cliente(nome_pasta_cliente, db_conf)
-                            if cliente and cliente[7] == True:
-                                cliente_id = cliente[0]
-                                valores = procura_valores(cliente_id, db_conf, mes, ano)
-                                valor_fatura = valores[20]
-                                empresa = pegar_empresa_por_id(cliente_id)
-                                if valor_fatura:
-                                    print(f"Agendando boleto para {nome_pasta_cliente} no valor de R${valor_fatura}...")
-                                    recebimento = agendar_recebimento(empresa, valor_fatura, mes, ano)
-                                    if recebimento:
-                                        copia_boleto_baixado(nome_pasta_cliente, mes, ano, caminho_destino)
-                                else:
-                                    print(f"Valor da fatura não encontrado para {nome_pasta_cliente}")
-                            else:
-                                print(f"Cliente {nome_pasta_cliente} não encontrado ou inativo!")                    
+        for pasta_cliente in lista_dir_clientes:
+            input(f"diretorio: {pasta_cliente}\n")
+            pasta_cliente_ano_mes = encontrar_pasta_por_nome(drive_service, pasta_cliente['id'], f"{ano}-{mes}")
+            if not pasta_cliente_ano_mes:
+                print(f"Pasta {ano}-{mes} do cliente {pasta_cliente_ano_mes['name']} não encontrada! criando pasta...\n")
+                pasta_cliente_ano_mes = criar_pasta_drive(drive_service, f"{ano}-{mes}", pasta_cliente['id'])
+                if not pasta_cliente_ano_mes:
+                    raise ValueError(f"Pasta {ano}-{mes} do cliente {pasta_cliente_ano_mes['name']} não pode ser criada!")
+                
+            arquivos_pasta_cliente = listar_arquivos_drive(drive_service, pasta_cliente_ano_mes['id'])
+            fatura_pronta = any(
+                arquivo['mimeType'] == 'application/pdf' and f"Fatura_Detalhada_{pasta_cliente['name']}.pdf" in arquivo['name']
+                for arquivo in arquivos_pasta_cliente
+            )
+
+            if fatura_pronta:
+                print(f"Pasta {ano}-{mes} do cliente {pasta_cliente_ano_mes['name']} encontrada e fatura pronta!\n")
+                continue
+
+            cliente = procura_cliente(pasta_cliente['name'], db_conf)
+            if cliente and cliente[7] == True:
+                cliente_id = cliente[0]
+                valores = procura_valores(cliente_id, db_conf, mes, ano)
+                valor_fatura = valores[20]
+                empresa = pegar_empresa_por_id(cliente_id)
+                if valor_fatura:
+                    print(f"Agendando boleto para {pasta_cliente['name']} no valor de R${valor_fatura}...")
+                    recebimento = agendar_recebimento(empresa, valor_fatura, mes, ano)
+                    if recebimento:
+                        copia_boleto_baixado(pasta_cliente['name'], mes, ano, pasta_cliente_ano_mes, drive_service)
+                else:
+                    print(f"Valor da fatura não encontrado para {pasta_cliente['name']}")
+            else:
+                print(f"Cliente {pasta_cliente['name']} não encontrado ou inativo!")                    
     except Exception as error:
         print(error)
     print("PROCESSO DE BOLETO ENCERRADO!")
