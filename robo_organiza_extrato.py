@@ -266,6 +266,7 @@ def valida_clientes(clientes, dir_extratos, db_conf) -> list[int]:
 def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, db_conf, drive_service):
     try:
         for pasta_id in dir_extratos:
+            input(f"processando pasta: {pasta_id}\n")
             pastas = lista_pastas_em_diretorio(drive_service, pasta_id)
             existe_pasta_novos_extratos = any(pasta['name'] == 'novos_extratos' for pasta in pastas)
             
@@ -462,6 +463,7 @@ def gera_fatura(mes, ano, lista_dir_clientes, modelo_fatura, db_conf):
     try:
         pythoncom.CoInitialize()
         for diretorio in lista_dir_clientes:
+            input(f"diretorio: {diretorio}\n")
             pastas_regioes = listagem_pastas(diretorio)
             for pasta_cliente in pastas_regioes:
                 nome_pasta_cliente = pega_nome(pasta_cliente)
