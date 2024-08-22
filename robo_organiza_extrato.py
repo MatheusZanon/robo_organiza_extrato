@@ -787,24 +787,22 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes, db
         else:
             print(f"O sistema retornou um erro: {error}")
 
-def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_refazer, db_conf):
+def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_refazer, db_conf, drive_service):
     try:
-        pythoncom.CoInitialize()
         for cliente_id in lista_clientes_refazer:
             cliente = procura_cliente_por_id(cliente_id, db_conf)
             if cliente and cliente[7] == True:
-                caminho_pasta_cliente = procura_pasta_cliente(cliente[1], lista_dir_clientes)
-                nome_pasta_cliente = pega_nome(caminho_pasta_cliente)
+                pasta_cliente = next((pasta for pasta in lista_dir_clientes if pasta['name'] == cliente[1]), None)
+                nome_pasta_cliente = pasta_cliente['id']
                 if nome_pasta_cliente:
-                    sub_pastas_clientes = listagem_pastas(caminho_pasta_cliente)
-                    sub_pasta = None
-                    for sub_pasta_cliente in sub_pastas_clientes:
-                        if f"{ano}-{mes}" == Path(sub_pasta_cliente).name:
-                            sub_pasta = sub_pasta_cliente
-                    if sub_pasta:
+                    caminho_sub_pasta_cliente = encontrar_pasta_por_nome(pasta_cliente['id'], f"{ano}-{mes}")
+                    if not caminho_sub_pasta_cliente:
+                        caminho_sub_pasta_cliente = criar_pasta_drive(drive_service, f"{ano}-{mes}", pasta_cliente['id'])
+                    
+                    if caminho_sub_pasta_cliente:
                         valores_financeiro = procura_valores(cliente_id, db_conf, mes, ano)
                         if valores_financeiro:
-                            cria_fatura(cliente_id, nome_pasta_cliente, sub_pasta, valores_financeiro, db_conf, mes, ano, modelo_fatura)
+                            cria_fatura(cliente_id, nome_pasta_cliente, caminho_sub_pasta_cliente, valores_financeiro, db_conf, mes, ano, modelo_fatura)
                         else: 
                             print("Cliente não possui valores para gerar fatura!")
                     else:
@@ -815,10 +813,8 @@ def refazer_fatura(mes, ano, lista_dir_clientes, modelo_fatura, lista_clientes_r
                 print(f"Cliente não encontrado ou inativo: {cliente[1]}\n")
     except Exception as error:
         print(error)
-    finally:
-        pythoncom.CoUninitialize()
 
-def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer, db_conf):
+def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer, db_conf, drive_service):
     for cliente_id in lista_clientes_refazer:
         empresa = pegar_empresa_por_id(cliente_id)
         if empresa:
@@ -839,10 +835,14 @@ def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer, db_conf
                         try:
                             cliente_db = procura_cliente_por_id(cliente_id, db_conf)
                             if cliente_db and cliente_db[7] == True:
-                                for diretorio in lista_dir_clientes:
-                                    pastas_regioes = listagem_pastas(diretorio)
-                                    for pasta_cliente in pastas_regioes:
-                                        nome_pasta_cliente = pega_nome(pasta_cliente)
+                                pasta_cliente = next((pasta for pasta in lista_dir_clientes if pasta['name'] == cliente[1]), None)
+                                nome_pasta_cliente = pasta_cliente['id']
+                                if nome_pasta_cliente:
+                                    caminho_sub_pasta_cliente = encontrar_pasta_por_nome(pasta_cliente['id'], f"{ano}-{mes}")
+                                    if not caminho_sub_pasta_cliente:
+                                        caminho_sub_pasta_cliente = criar_pasta_drive(drive_service, f"{ano}-{mes}", pasta_cliente['id'])
+                                    
+                                    if caminho_sub_pasta_cliente:
                                         if nome_pasta_cliente.__contains__(str(cliente_db[1])):
                                             # PASTA CLIENTE ENCONTRADA
                                             sub_pastas_cliente = listagem_pastas(pasta_cliente)
