@@ -209,7 +209,6 @@ def copia_boleto_baixado(nome_cliente, mes, ano, pasta_cliente, drive_service):
             novo_nome_boleto = caminho_pdf.with_name(f"Boleto_Recebimento_{nome_cliente.replace("S/S", "S S")}_{ano}.{mes}.pdf")
             caminho_pdf_mod = caminho_pdf.rename(novo_nome_boleto)
             sleep(0.5)
-            # copy(caminho_pdf_mod, pasta_cliente / caminho_pdf_mod.name)
             upload_arquivo_drive(drive_service, caminho_pdf_mod, pasta_cliente['id'])
             if os.path.exists(caminho_pdf_mod):
                 os.remove(caminho_pdf_mod)
@@ -534,59 +533,74 @@ def gera_boleto(mes, ano, lista_dir_clientes, db_conf, drive_service):
         print(error)
     print("PROCESSO DE BOLETO ENCERRADO!")
 
-def envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email):
+def envia_arquivos(mes, ano, lista_dir_clientes, db_conf, email_gestor, corpo_email, drive_service):
     try:  
         input("APERTE QUALQUER TECLA PARA ENVIAR OS ARQUIVOS")
-        for diretorio in lista_dir_clientes:
-            pastas_regioes = listagem_pastas(diretorio)
-            for pasta_cliente in pastas_regioes:
-                anexos = []
-                extrato = False
-                fatura = False
-                boleto = False
-                nome_pasta_cliente = pega_nome(pasta_cliente)
-                sub_pastas_cliente = listagem_pastas(pasta_cliente)
-                for sub_pasta in sub_pastas_cliente:
-                    if sub_pasta.__contains__(f"{ano}-{mes}"):
-                        arquivos_cliente = listagem_arquivos(sub_pasta)
-                        for arquivo in arquivos_cliente:
-                            if arquivo.__contains__("Extrato_Mensal_") and arquivo.__contains__(f"{nome_pasta_cliente}_{ano}.{mes}.pdf"):
-                                extrato = True
-                                anexos.append(arquivo)
-                            elif arquivo.__contains__("Fatura_Detalhada_") and arquivo.__contains__(f"{nome_pasta_cliente}_{ano}.{mes}.pdf"):
-                                fatura = True
-                                anexos.append(arquivo)
-                            elif arquivo.__contains__("Boleto_Recebimento_") and arquivo.__contains__(f"{nome_pasta_cliente}_{ano}.{mes}.pdf"):
-                                boleto = True
-                                anexos.append(arquivo)
-                        if extrato == True and fatura == True and boleto == True:
-                            try:
-                                cliente = procura_cliente(nome_pasta_cliente, db_conf)
-                                if cliente and cliente[7] == True:
-                                    cliente_id = cliente[0]
-                                    cliente_email = cliente[4]
-                                    valores_extrato = procura_valores(cliente_id, db_conf, mes, ano)
-                                    if valores_extrato and valores_extrato[21] == 0 and not cliente_email == None:
-                                        enviar_email_com_anexos(f"{cliente_email}, {email_gestor}", f"Documentos de Terceirização - {nome_pasta_cliente}", 
-                                                               f"{corpo_email}", anexos)
-                                        query_atualiza_anexos = ler_sql("sql/atualiza_anexos_cliente.sql")
-                                        values_anexos = (cliente_id, mes, ano)
-                                        with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
-                                            cursor.execute(query_atualiza_anexos, values_anexos)
-                                            conn.commit()
-                                        break
-                                    elif valores_extrato == None:
-                                        print("Valores de financeiro não encontrados!")
-                                    elif valores_extrato[21] == 1:
-                                        print("Anexos já enviados para o cliente!")
-                                    elif cliente_email == None:
-                                        print("Cliente sem email!")
-                                else:
-                                    print("Cliente não encontrado ou inativo!")
-                            except Exception as error:
-                                print (error)
-                        else:
-                            print("Cliente não possui todos os arquivos necessários para o envio!")
+        for pasta_cliente in lista_dir_clientes:
+            anexos = []
+            extrato = False
+            fatura = False
+            boleto = False
+            nome_pasta_cliente = pasta_cliente['name']
+            pasta_cliente_ano_mes = encontrar_pasta_por_nome(drive_service, pasta_cliente['id'], f"{ano}-{mes}")
+
+            if not pasta_cliente_ano_mes:
+                print(f"Pasta {ano}-{mes} do cliente {pasta_cliente_ano_mes['name']} não encontrada! criando pasta...\n")
+                pasta_cliente_ano_mes = criar_pasta_drive(drive_service, f"{ano}-{mes}", pasta_cliente['id'])
+                if not pasta_cliente_ano_mes:
+                    raise ValueError(f"Pasta {ano}-{mes} do cliente {pasta_cliente_ano_mes['name']} não pode ser criada!")
+                
+            arquivos_cliente = listagem_arquivos(pasta_cliente_ano_mes)
+            for arquivo in arquivos_cliente:
+                if arquivo['name'].__contains__("Extrato_Mensal_") and arquivo['name'].__contains__(f"{nome_pasta_cliente}_{ano}.{mes}.pdf"):
+                    extrato = True
+                    anexos.append((arquivo['id'], arquivo['name']))
+                elif arquivo['name'].__contains__("Fatura_Detalhada_") and arquivo['name'].__contains__(f"{nome_pasta_cliente}_{ano}.{mes}.pdf"):
+                    fatura = True
+                    anexos.append((arquivo['id'], arquivo['name']))
+                elif arquivo['name'].__contains__("Boleto_Recebimento_") and arquivo['name'].__contains__(f"{nome_pasta_cliente}_{ano}.{mes}.pdf"):
+                    boleto = True
+                    anexos.append((arquivo['id'], arquivo['name']))
+                
+            if extrato == True and fatura == True and boleto == True:
+                try:
+                    cliente = procura_cliente(nome_pasta_cliente, db_conf)
+                    if cliente and cliente[7] == True:
+                        cliente_id = cliente[0]
+                        cliente_email = cliente[4]
+                        valores_extrato = procura_valores(cliente_id, db_conf, mes, ano)
+
+                        # Download anexos do drive
+                        aux = []
+                        for anexo_id, anexo_name in anexos:
+                            anexo_path = download_arquivo_drive(drive_service, anexo_id, f"tmp/{anexo_name}")
+                            aux.append(anexo_path)
+
+                        anexos.clear()
+                        for anexo in aux:
+                            anexos.append(anexo)
+
+                        if valores_extrato and valores_extrato[21] == 0 and not cliente_email == None:
+                            enviar_email_com_anexos(f"{cliente_email}, {email_gestor}", f"Documentos de Terceirização - {nome_pasta_cliente}", 
+                                                    f"{corpo_email}", anexos)
+                            query_atualiza_anexos = ler_sql("sql/atualiza_anexos_cliente.sql")
+                            values_anexos = (cliente_id, mes, ano)
+                            with mysql.connector.connect(**db_conf) as conn, conn.cursor() as cursor:
+                                cursor.execute(query_atualiza_anexos, values_anexos)
+                                conn.commit()
+                            break
+                        elif valores_extrato == None:
+                            print("Valores de financeiro não encontrados!")
+                        elif valores_extrato[21] == 1:
+                            print("Anexos já enviados para o cliente!")
+                        elif cliente_email == None:
+                            print("Cliente sem email!")
+                    else:
+                        print("Cliente não encontrado ou inativo!")
+                except Exception as error:
+                    print (error)
+            else:
+                print("Cliente não possui todos os arquivos necessários para o envio!")
     except Exception as error:
         print (error)
 

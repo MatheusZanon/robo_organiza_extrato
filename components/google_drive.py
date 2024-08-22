@@ -310,6 +310,24 @@ def encontrar_pasta_por_nome(driver_service, folder_id, nome_pasta_desejada):
         print(f"Erro ao procurar pasta no Google Drive: {error}")
         return None
 
+def encontrar_arquivo_por_nome(driver_service, folder_id, nome_arquivo_desejado):
+    try:
+        # Listar todos os arquivos e pastas no diretório atual
+        arquivos = listar_arquivos_drive(driver_service, folder_id)
+
+        if arquivos is None:
+            return None
+
+        # Verificar se há uma pasta com o nome desejado
+        for arquivo in arquivos:
+            if arquivo['name'] == nome_arquivo_desejado:
+                return arquivo  # Retornar a pasta encontrada
+        
+        return None
+    except Exception as error:
+        print(f"Erro ao procurar arquivo no Google Drive: {error}")
+        return None
+
 def criar_pasta_drive(driver_service, folder_name, parent_folder_id):
     try:
         if not folder_name or not parent_folder_id:
