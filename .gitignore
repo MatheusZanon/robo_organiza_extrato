@@ -1,3 +1,6 @@
 # .gitignore 
 /.venv
 .env
+
+/package
+/robo_organiza_extrato.zip
