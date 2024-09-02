@@ -835,7 +835,7 @@ def refazer_boleto(mes, ano, lista_dir_clientes, lista_clientes_refazer, db_conf
                         try:
                             cliente_db = procura_cliente_por_id(cliente_id, db_conf)
                             if cliente_db and cliente_db[7] == True:
-                                pasta_cliente = next((pasta for pasta in lista_dir_clientes if pasta['name'] == cliente[1]), None)
+                                pasta_cliente = next((pasta for pasta in lista_dir_clientes if pasta['name'] == cliente_db[1]), None)
                                 nome_pasta_cliente = pasta_cliente['id']
                                 if nome_pasta_cliente:
                                     caminho_sub_pasta_cliente = encontrar_pasta_por_nome(pasta_cliente['id'], f"{ano}-{mes}")
