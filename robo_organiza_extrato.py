@@ -304,6 +304,8 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
                     nome_extrato = pega_nome(extrato)
                     texto_pdf = extract_text_pdf(extrato)
 
+                    print(texto_pdf)
+
                     # Nome do Centro de Custo
                     match_centro_custo = search(r"C\.Custo:\s*(.*)", texto_pdf)
                     if match_centro_custo:
@@ -345,7 +347,6 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
                                 else: 
                                     adiant_salarial = 0
                             print(f"Adiantamento Salarial: {adiant_salarial}")
-                            input('Pressione Enter para continuar...')
 
                             # NUMERO DE EMPREGADOS
                             match_demitido = search(r"No. Empregados: Demitido:\s*(\d+)", texto_pdf)
@@ -386,7 +387,7 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
                                 trabalhando = 0
 
                             # SALARIO CONTRIBUIÇÃO EMPREGADOS
-                            match_salario_contri_empregados = search(r"Salário contribuição empregados:\s*([\d.,]+)", texto_pdf)
+                            match_salario_contri_empregados = search(r"([\d.,]+)\s*Salário contribuição empregados", texto_pdf)
                             if  match_salario_contri_empregados:
                                 salario_contri_empregados = float(match_salario_contri_empregados
                                                                 .group(1).replace(".", "").replace(",", "."))
@@ -394,7 +395,7 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
                                 salario_contri_empregados = 0
 
                             # SALARIO CONTRIBUIÇÃO CONTRIBUINTES
-                            match_salario_contri_contribuintes = search(r"Salário contribuição contribuintes:\s*([\d.,]+)", 
+                            match_salario_contri_contribuintes = search(r"([\d.,]+)\s*Salário contribuição contribuintes", 
                                                                         texto_pdf)
                             if  match_salario_contri_contribuintes:
                                 salario_contri_contribuintes = float(match_salario_contri_contribuintes
@@ -404,7 +405,7 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, planilha_vales
                             
                             # SOMA DOS SALARIOS
                             soma_salarios_provdt = salario_contri_empregados + salario_contri_contribuintes
-
+                            
                             # VALOR DO INSS
                             match_inss = search(r"Total INSS:\s*([\d.,]+)", texto_pdf)
                             if match_inss:
