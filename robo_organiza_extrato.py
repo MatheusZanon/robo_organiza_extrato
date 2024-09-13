@@ -366,7 +366,7 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes):
                             trabalhando = 0
 
                         # SALARIO CONTRIBUIÇÃO EMPREGADOS
-                        match_salario_contri_empregados = search(r"Salário contribuição empregados:\s*([\d.,]+)", texto_pdf)
+                        match_salario_contri_empregados = search(r"([\d.,]+)\s*Salário contribuição empregados", texto_pdf)
                         if  match_salario_contri_empregados:
                             salario_contri_empregados = float(match_salario_contri_empregados
                                                             .group(1).replace(".", "").replace(",", "."))
@@ -374,7 +374,7 @@ def organiza_extratos(mes, ano, dir_extratos, lista_dir_clientes):
                             salario_contri_empregados = 0
 
                         # SALARIO CONTRIBUIÇÃO CONTRIBUINTES
-                        match_salario_contri_contribuintes = search(r"Salário contribuição contribuintes:\s*([\d.,]+)", 
+                        match_salario_contri_contribuintes = search(r"([\d.,]+)\s*Salário contribuição contribuintes", 
                                                                     texto_pdf)
                         if  match_salario_contri_contribuintes:
                             salario_contri_contribuintes = float(match_salario_contri_contribuintes
@@ -692,7 +692,7 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
                                         trabalhando = 0
 
                                     # SALARIO CONTRIBUIÇÃO EMPREGADOS
-                                    match_salario_contri_empregados = search(r"Salário contribuição empregados:\s*([\d.,]+)", texto_pdf)
+                                    match_salario_contri_empregados = search(r"([\d.,]+)\s*Salário contribuição empregados", texto_pdf)
                                     if  match_salario_contri_empregados:
                                         salario_contri_empregados = float(match_salario_contri_empregados
                                                                         .group(1).replace(".", "").replace(",", "."))
@@ -700,7 +700,7 @@ def reorganiza_extratos(mes, ano, dir_extratos, lista_dir_clientes, clientes):
                                         salario_contri_empregados = 0
 
                                     # SALARIO CONTRIBUIÇÃO CONTRIBUINTES
-                                    match_salario_contri_contribuintes = search(r"Salário contribuição contribuintes:\s*([\d.,]+)", 
+                                    match_salario_contri_contribuintes = search(r"([\d.,]+)\s*Salário contribuição contribuintes", 
                                                                                 texto_pdf)
                                     if  match_salario_contri_contribuintes:
                                         salario_contri_contribuintes = float(match_salario_contri_contribuintes
