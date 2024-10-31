@@ -1,5 +1,5 @@
 import os
-from aws_parameters import get_ssm_parameter
+from .aws_parameters import get_ssm_parameter
 
 def configura_db():    
     db_conf = {
