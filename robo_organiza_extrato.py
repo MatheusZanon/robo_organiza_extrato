@@ -55,7 +55,7 @@ def carregar_credenciais():
         
         credentials = identity_pool.Credentials.from_info(secret_json)
 
-        SCOPES = [get_ssm_parameter('/human/API_SCOPES')]
+        SCOPES = [get_ssm_parameter('/empresa/API_SCOPES')]
         credentials = credentials.with_scopes(SCOPES)
 
         credentials.refresh(Request())
@@ -65,8 +65,8 @@ def carregar_credenciais():
 
 def autenticacao_google_drive():
     try:
-        service_name = get_ssm_parameter('/human/API_NAME')
-        service_version = get_ssm_parameter('/human/API_VERSION')
+        service_name = get_ssm_parameter('/empresa/API_NAME')
+        service_version = get_ssm_parameter('/empresa/API_VERSION')
         credentials = carregar_credenciais()
         drive_service = build(service_name, service_version, credentials=credentials)
         return drive_service
@@ -934,7 +934,7 @@ def lambda_handler(event, context):
 
     # ========================PARAMETROS INICIAIS==============================
     clientes_itaperuna_id = os.getenv('CLIENTES_ITAPERUNA_FOLDER_ID')
-    clientes_manaus_id = os.getenv('CLIENTES_MANAUS_FOLDER_ID')
+    clientes_manaus_id = os.getenv('CLIENTES_MA_FOLDER_ID')
     arquivos_itaperuna = lista_pastas_em_diretorio(clientes_itaperuna_id)
     arquivos_manaus = lista_pastas_em_diretorio(clientes_manaus_id)
     lista_dir_clientes = arquivos_itaperuna + arquivos_manaus
