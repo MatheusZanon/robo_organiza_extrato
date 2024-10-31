@@ -276,9 +276,7 @@ def start_chrome():
         driver = webdriver.Chrome(service=servico, options=chrome_options) 
         actions = ActionChains(driver)
         driver.maximize_window()
-        driver.get("https://passport.nibo.com.br/account/login?email=&returnUrl=%2fauthorize%3fresponse_type"+
-                   "%3dtoken%26client_id%3d103416FE-A280-466A-9D28-642ACEE21C3B%26lu%3d1%26redirect_uri%3dhttps"+
-                   "%253a%252f%252fempresa.nibo.com.br%252fUser%252fLogonWithToken%253freturnUrl%253d%252fOrganization")
+        driver.get("site gestao financeira.com")
         elemento_email = procura_elemento(driver, "xpath", """//*[@id="Username"]""", 30)
         elemento_email.send_keys(automacao_email)
         elemento_btn_continue = procura_elemento(driver, "xpath","""//*[@id="continue-button"]""", 30)
@@ -863,13 +861,13 @@ class execute(Resource):
             mes = f"0{mes}"
 
         # ========================PARAMETROS INICIAS==============================
-        dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Itaperuna"
-        dir_clientes_manaus = f"{particao}:\\Meu Drive\\Cobranca_Clientes_terceirizacao\\Clientes Manaus"
+        dir_clientes_itaperuna = f"{particao}:\\Meu Drive\\restodocaminho"
+        dir_clientes_manaus = f"{particao}:\\Meu Drive\\estodocaminho"
         lista_dir_clientes = [dir_clientes_itaperuna, dir_clientes_manaus]
-        dir_extratos = f"{particao}:\\Meu Drive\\Robo_Emissao_Relatorios_do_Mes\\faturas_human_{ano}_{mes}"
-        modelo_fatura = Path(f"{particao}:\\Meu Drive\\Arquivos_Automacao\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
-        planilha_vales_sst = Path(f"{particao}:\\Meu Drive\\Relatorio_Vales_Saude_Seguranca\\{ano}-{mes}\\Relatorio_Vales_Saude_Seguranca_{ano}.{mes}.xlsx")
-        planilha_reembolsos = Path(f"{particao}:\\Meu Drive\\Relatorio_Boletos_Salario_Reembolso\\{ano}-{mes}\\Relatorio_Boletos_Salario_Reembolso.xlsx")
+        dir_extratos = f"{particao}:\\Meu Drive\\restodocaminho\\faturas_{ano}_{mes}"
+        modelo_fatura = Path(f"{particao}:\\Meu Drive\\restodocaminho\\Fatura_Detalhada_Modelo_0000.00_python.xlsx")
+        planilha_vales_sst = Path(f"{particao}:\\Meu Drive\\restodocaminho\\{ano}-{mes}\\arquivo_{ano}.{mes}.xlsx")
+        planilha_reembolsos = Path(f"{particao}:\\Meu Drive\\restodocaminho\\{ano}-{mes}\\arquivo.xlsx")
         sucesso = False
 
         # ========================LÓGICA DE EXECUÇÃO DO ROBÔ===========================
